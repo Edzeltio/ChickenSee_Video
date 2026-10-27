@@ -1,0 +1,142 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  background-color: #f7f8fa;
+  color: #172033;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overflow-x: hidden;
+}
+
+.mobile-nav-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mobile-nav-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.portal-shell select,
+.portal-shell input {
+  max-width: 100%;
+}
+
+@media (max-width: 640px) {
+  .portal-shell table {
+    font-size: 11px;
+  }
+
+  .portal-shell button,
+  .portal-shell select,
+  .portal-shell input {
+    touch-action: manipulation;
+  }
+}
+
+.portal-shell [class*="bg-slate-950"],
+.portal-shell [class*="bg-slate-900"] {
+  background-color: #ffffff !important;
+}
+
+.portal-shell [class*="bg-slate-800"] {
+  background-color: #f1f3f6 !important;
+}
+
+.portal-shell [class*="bg-slate-700"] {
+  background-color: #e5e7eb !important;
+}
+
+.portal-shell [class*="border-slate-"] {
+  border-color: #e2e6ec !important;
+}
+
+.portal-shell [class*="text-slate-100"],
+.portal-shell [class*="text-slate-200"] {
+  color: #172033 !important;
+}
+
+.portal-shell [class*="text-slate-300"] {
+  color: #344258 !important;
+}
+
+.portal-shell [class*="text-slate-400"] {
+  color: #59677d !important;
+}
+
+.portal-shell [class*="text-slate-500"] {
+  color: #68768a !important;
+}
+
+.portal-shell [class*="text-slate-600"] {
+  color: #778499 !important;
+}
+
+.portal-shell [class*="bg-indigo-"],
+.portal-shell [class*="bg-violet-"] {
+  background-color: #fff3e8 !important;
+}
+
+.portal-shell [class*="border-indigo-"],
+.portal-shell [class*="border-violet-"] {
+  border-color: #fed7aa !important;
+}
+
+.portal-shell [class*="text-indigo-"],
+.portal-shell [class*="text-violet-"] {
+  color: #c2410c !important;
+}
+
+.portal-shell [class*="text-white"] {
+  color: #172033 !important;
+}
+
+.portal-shell button.text-white,
+.portal-shell button .text-white,
+.portal-shell .bg-gradient-to-tr .text-white {
+  color: #ffffff !important;
+}
+
+.portal-shell [class*="text-emerald-300"],
+.portal-shell [class*="text-emerald-400"] {
+  color: #067647 !important;
+}
+
+.portal-shell [class*="text-amber-300"],
+.portal-shell [class*="text-amber-400"] {
+  color: #9a6700 !important;
+}
+
+.portal-shell [class*="text-red-300"],
+.portal-shell [class*="text-red-400"] {
+  color: #b42318 !important;
+}
+
+.portal-shell [class*="text-blue-300"] {
+  color: #175cd3 !important;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #eef1f5;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd2dc;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #aeb8c6;
+}

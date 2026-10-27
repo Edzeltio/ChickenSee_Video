@@ -1,0 +1,32 @@
+[Unit]
+Description=ChickenSee Edge AI Vision & Sensor Telemetry Pipeline
+After=network.target network-online.target
+
+[Service]
+Type=simple
+User=kairi
+WorkingDirectory=/opt/chickensee
+ExecStart=/usr/bin/python3 -m edge.pipeline
+Restart=always
+RestartSec=5s
+
+# Edge Hardware Resource Safeguards (Dell OptiPlex)
+CPUQuota=85%
+MemoryMax=3G
+MemoryHigh=2.5G
+
+# Environment variables
+Environment=PYTHONUNBUFFERED=1
+Environment=MODEL_PATH=/opt/chickensee/custom_poultry.pt
+Environment=TRACKER_CONFIG=/opt/chickensee/bytetrack_poultry.yaml
+Environment=DB_PATH=/opt/chickensee/agent/data/chicken_telemetry.db
+Environment=START_HOUR=6
+Environment=END_HOUR=18
+
+# Logging to system journal
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=chickensee-edge
+
+[Install]
+WantedBy=multi-user.target
