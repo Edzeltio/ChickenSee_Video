@@ -57,6 +57,7 @@ class EdgePipelineManager:
 
         # 2. State & Watchdog
         self.cap: Optional[cv2.VideoCapture] = None
+        self._source_is_file = False
         self.frame_idx = 0
         self._total_frames: int = 0
         self.consecutive_read_failures = 0
@@ -85,6 +86,9 @@ class EdgePipelineManager:
         if str(source).isdigit():
             source = int(source)
 
+        self._source_is_file = isinstance(source, (str, Path)) and not str(source).lower().startswith(
+            ("rtsp://", "http://", "https://")
+        ) and not str(source).isdigit()
         print(f"[STREAM] Initializing video source: {source}")
         self.cap = cv2.VideoCapture(source)
 
@@ -266,6 +270,9 @@ class EdgePipelineManager:
 
                 ret, frame = self.cap.read()
                 if not ret or frame is None:
+                    if self._source_is_file:
+                        print("[STREAM] Video file reached end of stream.")
+                        break
                     self.consecutive_read_failures += 1
                     if self.consecutive_read_failures > 5:
                         print(f"[WATCHDOG] Frame read dropped ({self.consecutive_read_failures} fails). Reconnecting...")

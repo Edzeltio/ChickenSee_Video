@@ -162,7 +162,7 @@ class TestLegBandDetection(unittest.TestCase):
 
         self.assertEqual([bird.track_id for bird in first.birds], [1, 2])
         self.assertEqual([bird.track_id for bird in second.birds], [2, 1])
-        self.assertEqual(tracker.model.confidence_thresholds, [0.70, 0.70])
+        self.assertEqual(tracker.model.confidence_thresholds, [0.25, 0.25])
         self.assertIsNone(tracker._resolve_short_id(None))
         self.assertEqual(tracker._next_short_id, 3)
 
@@ -171,6 +171,58 @@ class TestLegBandDetection(unittest.TestCase):
         next_video = tracker.process_frame(frame, 0)
         self.assertEqual([bird.track_id for bird in next_video.birds], [1, 2])
         self.assertEqual(tracker._next_short_id, 3)
+
+    def test_unique_band_ids_are_deterministic_across_video_resets(self):
+        labels = (
+            "Hen1 (Green)",
+            "Hen2 (White)",
+            "Hen3 (Blue)",
+            "Hen4 (Yellow)",
+            "Hen5 (Pink)",
+        )
+        first_video_ids = [
+            ZampenYOLOTracker.stable_band_identity_id(label) for label in labels
+        ]
+        second_video_ids = [
+            ZampenYOLOTracker.stable_band_identity_id(label) for label in labels
+        ]
+
+        self.assertEqual(first_video_ids, second_video_ids)
+        self.assertEqual(len(set(first_video_ids)), len(labels))
+        self.assertIsNone(ZampenYOLOTracker.stable_band_identity_id("Chicken"))
+        self.assertIsNone(ZampenYOLOTracker.stable_band_identity_id("Rooster"))
+
+        def new_tracker():
+            tracker = object.__new__(ZampenYOLOTracker)
+            tracker.short_id_map = {}
+            tracker.short_track_positions = {}
+            tracker._next_short_id = 1
+            tracker.processed_frame_count = 1
+            return tracker
+
+        first = TrackedDetection(
+            box=[10, 10, 30, 40],
+            centroid=(20, 25),
+            confidence=0.9,
+            class_id=0,
+            class_name="Chicken",
+            track_id=501,
+            bird_label="Hen1 (Green)",
+        )
+        second = TrackedDetection(
+            box=[10, 10, 30, 40],
+            centroid=(20, 25),
+            confidence=0.9,
+            class_id=0,
+            class_name="Chicken",
+            track_id=17,
+            bird_label="Hen1 (Green)",
+        )
+
+        new_tracker()._assign_display_ids([first], (100, 100, 3))
+        new_tracker()._assign_display_ids([second], (100, 100, 3))
+        self.assertEqual(first.track_id, 1_000_001)
+        self.assertEqual(second.track_id, first.track_id)
 
     def test_tracker_reuses_id_for_nearby_reappearing_chicken(self):
         tracker = object.__new__(ZampenYOLOTracker)

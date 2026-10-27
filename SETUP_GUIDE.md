@@ -12,7 +12,7 @@ flowchart TD
         Cam["📹 Farm Cameras / Recorders"] -->|"Save MP4s"| WatchFolders["📁 Watched Video Folders"]
         Sensors["🌡️ Environmental Sensors"] -->|"Log Telemetry"| SQLite["sensors.sqlite"]
         
-        WatchFolders -->|"Detects stable files (>20s)"| Worker["⚙️ Video Analyzer Daemon\n(YOLO26n + ByteTrack)"]
+        WatchFolders -->|"Detects stable files (2s default)"| Worker["⚙️ Video Analyzer Daemon\n(YOLO26n + ByteTrack)"]
         SQLite -->|"Pairs intervals"| Worker
         
         Worker -->|"Generates"| LocalResults["💾 C:\\ChickenSee_Local_Storage\n• /results (JSON)\n• /videos (_detected.mp4)\n• queue_status.json"]
@@ -155,7 +155,7 @@ The analytics API is the single writer for `results/queue_status.json`; the Cont
    - Under **Quick video test**, select your watch folder and click **"Choose a video and test"**.
    - Select any short MP4 video. A copy is placed in your watch folder.
 4. Switch to the **Queue** tab in the desktop app:
-   - When the file finishes writing and stays stable for ~20s, it enters **PROCESSING**.
+   - When the file finishes writing and stays stable for the configured interval (2 seconds by default), it enters **PROCESSING**.
    - You will see the active video name, live progress bar, and frame counts.
 5. Open your **Vercel Web Portal** (`https://your-chickensee-portal.vercel.app`):
    - In the top header next to "Optiplex Live", observe the live badge:
@@ -198,7 +198,7 @@ To make sure ChickenSee automatically runs whenever the OptiPlex boots up:
 - **Queue says "Offline / Services Stopped"**:
   Open the Control Center desktop shortcut and click **"▶ Start ChickenSee"** on the Dashboard.
 - **Videos are not being analyzed**:
-  Ensure the video is in an MP4 container and has been stable (unchanged file size) for at least 20 seconds.
+  Ensure the video is in an MP4 container and has been stable (unchanged file size) for `FILE_STABILITY_THRESHOLD_S` seconds (2 seconds by default).
 - **Cloud Uploads not showing on Vercel**:
   Confirm that **Cloud Sync** is toggled ON in the Setup tab and that your `SYNC_SECRET` matches your Vercel environment variable exactly.
   Check that `SUPABASE_URL`, `SUPABASE_STORAGE_BUCKET`, and `SUPABASE_SERVICE_ROLE_KEY` are configured in Vercel and redeploy. Pending local files remain queued and the agent retries cloud sync.

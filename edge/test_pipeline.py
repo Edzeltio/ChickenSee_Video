@@ -31,7 +31,11 @@ def run_verification_test():
     print("🧪 Running ChickenSee Edge AI Verification Suite...")
     print("=" * 65)
 
-    test_video = ROOT_DIR / "agent" / "data" / "48f95267-a3be-45a8-aea3-cccc8c413297.mp4"
+    configured_test_video = (
+        ROOT_DIR / "agent" / "data" / "48f95267-a3be-45a8-aea3-cccc8c413297.mp4"
+    )
+    sample_video = ROOT_DIR / "video_detected.mp4"
+    test_video = configured_test_video if configured_test_video.is_file() else sample_video
     if not test_video.is_file():
         print(f"[FAIL] Test video not found at: {test_video}")
         return False

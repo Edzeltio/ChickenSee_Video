@@ -7,3 +7,6 @@ pydantic>=2.9.0
 numpy>=1.26.0
 psutil>=6.1.0
 python-multipart>=0.0.12
+imageio-ffmpeg>=0.5.1
+PyYAML>=6.0.2
+pyserial>=3.5

@@ -125,11 +125,13 @@ See [SETUP_GUIDE.md](./SETUP_GUIDE.md) for full Windows setup, test, and trouble
 The edge processing hub running on the Dell OptiPlex server includes a high-performance computer vision, tracking, behavior classification, and sensor synchronization pipeline located in the `edge/` directory.
 
 ### Key Components:
-- **`edge/detector.py`**: Optimizes YOLO26n (`custom_poultry.pt`) CPU inference using PyTorch multi-threading and ByteTrack association (`bytetrack_poultry.yaml`). Differentiates Roosters (strictly red) from Hens, and performs Hens Re-ID via Leg Band detection with HSV feet-crop fallback. Includes LRU track memory pruning to eliminate memory leaks during 12-hour continuous shifts.
+- **`edge/detector.py`**: Runs YOLO inference and ByteTrack association (`bytetrack_poultry.yaml`), with colored leg-band recognition and HSV fallback. Band colors are not general appearance Re-ID; see the tracking guide for cross-video identity limits. Expired track, smoothing, and display-ID state is pruned during long runs.
 - **`edge/behavior.py`**: Real-time behavior classification (Feeding, Drinking, Resting/Inactive, Walking/Active, Agitation) based on spatial proximity to feeders/drinkers and kinematic motion velocity. Maintains individual bird activity budgets and health flags (e.g. lethargy alert).
 - **`edge/sensors.py`**: Environmental and physical sensor hub (Temperature, Humidity, Ammonia NH3 ppm, Lux, THI heat stress index, feeder load cell, water flow). Features a thread-safe ring buffer with nearest-neighbor temporal synchronization to pair sensor metrics with vision frames.
 - **`edge/aggregator.py`**: Enforces strict **06:00:00 to 18:00:00 daily operational window**. Aggregates detection counts, flock mobility, behavior time-budgets, and environmental averages, flushing to local SQLite (`agent/data/chicken_telemetry.db`), CSV, and JSON every hour on the hour.
 - **`edge/pipeline.py`**: Master orchestrator with video stream watchdog, auto-reconnect backoff, and periodic garbage collection.
+
+For the exact tracker behavior, cross-video identity limits, manual/camera dataset collection, training, configuration values, and verified sample-video details, see [POULTRY_TRACKING_GUIDE.md](./POULTRY_TRACKING_GUIDE.md). ByteTrack IDs are sequence-local; stable individual IDs are currently supported only for uniquely assigned colored leg bands.
 
 ### Quick Start Commands:
 

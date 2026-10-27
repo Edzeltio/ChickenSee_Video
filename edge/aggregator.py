@@ -45,16 +45,17 @@ class HourlyAggregationRecord:
     resting_time_pct: float
     agitated_time_pct: float
     flock_mobility_score: float
-    temp_mean: float
-    temp_min: float
-    temp_max: float
-    humidity_mean: float
-    humidity_min: float
-    humidity_max: float
-    ammonia_ppm_mean: float
-    ammonia_ppm_max: float
-    lux_mean: float
-    thi_mean: float
+    temp_mean: Optional[float]
+    temp_min: Optional[float]
+    temp_max: Optional[float]
+    humidity_mean: Optional[float]
+    humidity_min: Optional[float]
+    humidity_max: Optional[float]
+    ammonia_ppm_mean: Optional[float]
+    ammonia_ppm_max: Optional[float]
+    lux_mean: Optional[float]
+    thi_mean: Optional[float]
+    sensor_data_available: bool
     heat_stress_alert: str
     notes: str = ""
 
@@ -119,6 +120,7 @@ class HourlyTelemetryAggregator:
                 lux_mean REAL NOT NULL,
                 thi_mean REAL NOT NULL,
                 heat_stress_alert TEXT NOT NULL,
+                sensor_data_available INTEGER NOT NULL DEFAULT 0,
                 notes TEXT,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
@@ -177,6 +179,16 @@ class HourlyTelemetryAggregator:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_flock_date_hour ON hourly_flock_telemetry (date, hour_slot);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_bird_date_hour ON bird_hourly_behavior (date, hour_slot);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_env_ts ON environmental_logs_raw (timestamp);")
+            flock_columns = {
+                row[1] for row in cursor.execute(
+                    "PRAGMA table_info(hourly_flock_telemetry)"
+                ).fetchall()
+            }
+            if "sensor_data_available" not in flock_columns:
+                cursor.execute(
+                    "ALTER TABLE hourly_flock_telemetry "
+                    "ADD COLUMN sensor_data_available INTEGER NOT NULL DEFAULT 0"
+                )
             conn.commit()
             print(f"[AGGREGATOR] SQLite schema initialized at {self.db_path}")
 
@@ -349,25 +361,29 @@ class HourlyTelemetryAggregator:
         flock_mobility = round((active_pct + agit_pct * 1.5) / 100.0, 2)
 
         # 2. Environmental Aggregations
-        t_mean = round(sum(self.temps) / len(self.temps), 2) if self.temps else 26.0
-        t_min = round(min(self.temps), 2) if self.temps else 25.0
-        t_max = round(max(self.temps), 2) if self.temps else 27.0
+        sensor_data_available = bool(
+            self.temps and self.humidities and self.ammonias and self.luxes and self.this
+        )
+        if sensor_data_available:
+            t_mean = round(sum(self.temps) / len(self.temps), 2)
+            t_min, t_max = round(min(self.temps), 2), round(max(self.temps), 2)
+            h_mean = round(sum(self.humidities) / len(self.humidities), 1)
+            h_min, h_max = round(min(self.humidities), 1), round(max(self.humidities), 1)
+            nh3_mean = round(sum(self.ammonias) / len(self.ammonias), 2)
+            nh3_max = round(max(self.ammonias), 2)
+            lux_mean = round(sum(self.luxes) / len(self.luxes), 1)
+            thi_mean = round(sum(self.this) / len(self.this), 2)
 
-        h_mean = round(sum(self.humidities) / len(self.humidities), 1) if self.humidities else 65.0
-        h_min = round(min(self.humidities), 1) if self.humidities else 60.0
-        h_max = round(max(self.humidities), 1) if self.humidities else 70.0
-
-        nh3_mean = round(sum(self.ammonias) / len(self.ammonias), 2) if self.ammonias else 10.0
-        nh3_max = round(max(self.ammonias), 2) if self.ammonias else 12.0
-
-        lux_mean = round(sum(self.luxes) / len(self.luxes), 1) if self.luxes else 150.0
-        thi_mean = round(sum(self.this) / len(self.this), 2) if self.this else 72.0
-
-        heat_alert = "Normal"
-        if thi_mean >= 82.0 or self.heat_stress_counts > 100:
-            heat_alert = "Severe Heat Stress Alert"
-        elif thi_mean >= 76.0:
-            heat_alert = "Mild Warm Alert"
+            heat_alert = "Normal"
+            if thi_mean >= 82.0 or self.heat_stress_counts > 100:
+                heat_alert = "Severe Heat Stress Alert"
+            elif thi_mean >= 76.0:
+                heat_alert = "Mild Warm Alert"
+        else:
+            t_mean = t_min = t_max = None
+            h_mean = h_min = h_max = None
+            nh3_mean = nh3_max = lux_mean = thi_mean = None
+            heat_alert = "Unavailable"
 
         record = HourlyAggregationRecord(
             date=date_str,
@@ -397,6 +413,7 @@ class HourlyTelemetryAggregator:
             ammonia_ppm_max=nh3_max,
             lux_mean=lux_mean,
             thi_mean=thi_mean,
+            sensor_data_available=sensor_data_available,
             heat_stress_alert=heat_alert,
             notes=f"Aggregated {self.frame_count} frames over window."
         )
@@ -408,7 +425,12 @@ class HourlyTelemetryAggregator:
         self._export_csv_and_json(record, all_bird_states)
 
         print(f"[AGGREGATOR] >>> Successfully logged hourly telemetry for [{record.date} {record.hour_slot}] <<<")
-        print(f"             Birds: {record.unique_birds} unique | Feed: {record.feeding_time_pct}% | Drink: {record.drinking_time_pct}% | Temp: {record.temp_mean}°C | THI: {record.thi_mean}")
+        sensor_status = (
+            f"Temp: {record.temp_mean}°C | THI: {record.thi_mean}"
+            if record.sensor_data_available
+            else "Sensors: unavailable"
+        )
+        print(f"             Birds: {record.unique_birds} unique | Feed: {record.feeding_time_pct}% | Drink: {record.drinking_time_pct}% | {sensor_status}")
 
         return record
 
@@ -430,18 +452,28 @@ class HourlyTelemetryAggregator:
                     unidentified_chickens_count, feeding_time_pct, drinking_time_pct,
                     active_time_pct, resting_time_pct, agitated_time_pct, flock_mobility_score,
                     temp_mean, temp_min, temp_max, humidity_mean, humidity_min, humidity_max,
-                    ammonia_ppm_mean, ammonia_ppm_max, lux_mean, thi_mean, heat_stress_alert, notes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ammonia_ppm_mean, ammonia_ppm_max, lux_mean, thi_mean, heat_stress_alert,
+                    sensor_data_available, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     record.date, record.hour_slot, record.start_time, record.end_time,
                     record.total_frames, record.avg_fps, record.unique_birds, record.avg_birds_present,
                     record.rooster_detections, record.identified_hens_count, record.unidentified_chickens_count,
                     record.feeding_time_pct, record.drinking_time_pct, record.active_time_pct,
                     record.resting_time_pct, record.agitated_time_pct, record.flock_mobility_score,
-                    record.temp_mean, record.temp_min, record.temp_max,
-                    record.humidity_mean, record.humidity_min, record.humidity_max,
-                    record.ammonia_ppm_mean, record.ammonia_ppm_max,
-                    record.lux_mean, record.thi_mean, record.heat_stress_alert, record.notes
+                    record.temp_mean if record.temp_mean is not None else 0.0,
+                    record.temp_min if record.temp_min is not None else 0.0,
+                    record.temp_max if record.temp_max is not None else 0.0,
+                    record.humidity_mean if record.humidity_mean is not None else 0.0,
+                    record.humidity_min if record.humidity_min is not None else 0.0,
+                    record.humidity_max if record.humidity_max is not None else 0.0,
+                    record.ammonia_ppm_mean if record.ammonia_ppm_mean is not None else 0.0,
+                    record.ammonia_ppm_max if record.ammonia_ppm_max is not None else 0.0,
+                    record.lux_mean if record.lux_mean is not None else 0.0,
+                    record.thi_mean if record.thi_mean is not None else 0.0,
+                    record.heat_stress_alert,
+                    int(record.sensor_data_available),
+                    record.notes
                 ))
 
                 # Insert Individual Bird Behavior Records

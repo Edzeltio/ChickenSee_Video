@@ -14,17 +14,17 @@ Designed and optimized for local edge deployment on a **Dell OptiPlex server**, 
   │  • Video Recorder: Writes MP4 clips of varying lengths                │
   │  • Sensor Hub: Logs environment readings to SQLite (chicken_telemetry) │
   └──────────────────────────────────┬─────────────────────────────────────┘
-                                     │ (20s stable-file check)
+                                     │ (2s stable-file check by default)
                                      ▼
                    ANALYSIS & AGGREGATION LAYER (Worker Daemon)
   ┌────────────────────────────────────────────────────────────────────────┐
-  │  • Ingests stable MP4 files from the configured agent watch folders    │
+  │  • Ingests stable MP4 files from configured watch folders (2s default) │
   │  • Splits each video into configurable intervals (30m default)         │
   │  • Keeps a shorter final interval for videos of varying lengths         │
   │  • Computes interval sensor averages (Temp, RH, NH3, Lux, THI)          │
   │  • Marks unmatched sensor intervals unavailable; never substitutes     │
   │    estimated readings for missing telemetry                           │
-  │  • Runs YOLO26 Nano (yolo26n.pt) + ByteTrack persistent inference      │
+   │  • Runs YOLO26 Nano + ByteTrack within each source video               │
   │  • Stabilizes class labels across each track to limit frame-to-frame  │
   │    Chicken / Feeder / Drinker label flips                              │
   │  • Resolves hen bands from full-resolution HSV crops with temporal     │
@@ -49,7 +49,7 @@ Designed and optimized for local edge deployment on a **Dell OptiPlex server**, 
 
 ## Specific Behavior Detection Logic
 
-Using persistent ByteTrack IDs (`track_id`) and spatial bounding boxes:
+Using ByteTrack IDs (`track_id`) within each source video and spatial bounding boxes:
 
 ### 1. Reduce Eating
 * **Spatial Condition**: Chicken bounding box coordinates intersect or lie within designated feeder zones ($d_{\text{feeder}} \le 95\text{ px}$).
@@ -137,7 +137,9 @@ Once started, the interactive OpenAPI documentation is available at:
 
 ## Automatic analysis from the sync agent's folders
 
-For the portal workflow, run the local file watcher with `npm start` in `agent\`, then run `python -m analytics.worker` from the repository root. The worker polls the same `agent\directories.json` paths, ignores videos that are still being written, and starts analysis after 20 seconds without a file modification. Each video is split into configurable intervals of up to 30 minutes (`CHUNK_MINUTES`); shorter videos produce a single partial interval.
+For the portal workflow, run the local file watcher with `npm start` in `agent\`, then run `python -m analytics.worker` from the repository root. The worker polls the same `agent\directories.json` paths, ignores videos that are still being written, and starts analysis after `FILE_STABILITY_THRESHOLD_S` seconds without a file modification (2 seconds by default). Each video is split into configurable intervals of up to 30 minutes (`CHUNK_MINUTES`); shorter videos produce a single partial interval.
+
+See the repository-level [Poultry Tracking Guide](../POULTRY_TRACKING_GUIDE.md) for video-local vs. stable identities, crop collection, camera/file commands, training, configuration, and verified test limitations.
 
 Reports are written to `CHICKENSEE_LOCAL_STORAGE\results` (defaults to `C:\ChickenSee_Local_Storage\results`). Completed annotated videos are written to `CHICKENSEE_LOCAL_STORAGE\videos`. The agent uploads reports and completed `*_detected.mp4` videos only when `ENABLE_CLOUD_SYNC=1` and valid Vercel credentials are configured. Original watched-folder videos are analyzed in place: they are not copied into an archive/incoming folder or uploaded. The reports and annotated outputs are listed in the authenticated portal's **Results** and **Videos** tabs.
 

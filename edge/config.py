@@ -65,7 +65,7 @@ class BehaviorConfig:
 
 @dataclass
 class SensorConfig:
-    # Ingestion Source: "serial", "mqtt", "http", or "simulation"
+    # Implemented sources: "serial" and "simulation"
     source_type: str = os.getenv("SENSOR_SOURCE", "simulation")
     serial_port: str = os.getenv("SENSOR_SERIAL_PORT", "COM3")
     serial_baud: int = int(os.getenv("SENSOR_BAUD", "9600"))

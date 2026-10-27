@@ -106,8 +106,8 @@ class PoultryInferenceEngine:
         # 4. State Management & Memory Safe History
         self.frame_count = 0
         self.track_states: Dict[int, Dict[str, Any]] = {}   # track_id -> {"label": str, "last_seen": int}
+        self.track_last_seen_frame: Dict[int, int] = {}
         self.smoothed_boxes: Dict[int, List[float]] = {}    # track_id -> [x1, y1, x2, y2]
-        self.cumulative_seen_ids = set()
         self.short_id_map: Dict[int, int] = {}
         self._next_short_id = 1
         
@@ -153,12 +153,14 @@ class PoultryInferenceEngine:
         
         cutoff = self.frame_count - self.max_inactive_frames
         expired = [
-            tid for tid, s in self.track_states.items() 
-            if s.get("last_seen_frame", 0) < cutoff
+            tid for tid, last_seen in self.track_last_seen_frame.items()
+            if last_seen < cutoff
         ]
         for tid in expired:
             self.track_states.pop(tid, None)
+            self.track_last_seen_frame.pop(tid, None)
             self.smoothed_boxes.pop(tid, None)
+            self.short_id_map.pop(tid, None)
 
     def process_frame(self, frame: np.ndarray, timestamp: Optional[float] = None) -> FrameInferenceResult:
         """
@@ -214,8 +216,10 @@ class PoultryInferenceEngine:
                         imgsz=self.cfg.inference_size,
                         device=self.device
                     )[0]
-            except Exception:
-                return FrameInferenceResult(frame_idx=self.frame_count, timestamp=timestamp)
+            except Exception as fallback_error:
+                raise RuntimeError(
+                    f"YOLO tracking and detection both failed on frame {self.frame_count}"
+                ) from fallback_error
 
         infer_dur = (time.perf_counter() - t_start) * 1000.0
         fps = 1000.0 / infer_dur if infer_dur > 0 else 0.0
@@ -260,6 +264,10 @@ class PoultryInferenceEngine:
         # ------------------------------------------------------------------
         # 2. Leg Band Association & Re-ID for Hens
         # ------------------------------------------------------------------
+        for _, _, _, track_id, _ in chicken_raw + rooster_raw:
+            if track_id is not None:
+                self.track_last_seen_frame[track_id] = self.frame_count
+
         for (band_box, band_class) in band_raw:
             bx1, by1, bx2, by2 = band_box
             band_cx = (bx1 + bx2) / 2
@@ -316,9 +324,6 @@ class PoultryInferenceEngine:
             x1, y1, x2, y2 = self._smooth_box(track_id, raw_orig)
             sid = self._resolve_short_id(track_id)
 
-            if track_id is not None:
-                self.cumulative_seen_ids.add(track_id)
-
             label = "Chicken"
             if track_id is not None and track_id in self.track_states:
                 cand = self.track_states[track_id]["label"]
@@ -356,9 +361,6 @@ class PoultryInferenceEngine:
             raw_orig = [rbox[0] * scale_w, rbox[1] * scale_h, rbox[2] * scale_w, rbox[3] * scale_h]
             x1, y1, x2, y2 = self._smooth_box(track_id, raw_orig)
             sid = self._resolve_short_id(track_id)
-
-            if track_id is not None:
-                self.cumulative_seen_ids.add(track_id)
 
             rooster_count += 1
             cinfo = COLOR_MAP["Rooster"]

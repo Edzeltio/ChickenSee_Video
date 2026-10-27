@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+.venv/
+dataset/
+runs/
+agent/data/
+*.pt
+dataset_config.yaml
+*.processing.mp4

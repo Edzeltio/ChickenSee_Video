@@ -1,172 +1,295 @@
-import os
-import yaml
-import shutil
+#!/usr/bin/env python3
+"""Validate, split, and train the ChickenSee YOLO detection dataset.
+
+Importing this module is safe; training only starts from the command line.
+"""
+
+import argparse
 import random
-from ultralytics import YOLO
+import re
+import shutil
+from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# Paths
-# ---------------------------------------------------------------------------
-project_dir  = os.path.dirname(os.path.abspath(__file__))
-dataset_dir  = os.path.join(project_dir, "dataset")
-images_dir   = os.path.join(dataset_dir, "images")
-labels_dir   = os.path.join(dataset_dir, "labels")
 
-train_img_dir = os.path.join(dataset_dir, "train", "images")
-train_lbl_dir = os.path.join(dataset_dir, "train", "labels")
-val_img_dir   = os.path.join(dataset_dir, "val",   "images")
-val_lbl_dir   = os.path.join(dataset_dir, "val",   "labels")
-
-# ---------------------------------------------------------------------------
-# Class definitions — must match Label Studio export order exactly
-# 9 classes from current Label Studio project (alphabetical YOLO export order)
-# ---------------------------------------------------------------------------
+PROJECT_DIR = Path(__file__).resolve().parent
+DEFAULT_DATASET_DIR = PROJECT_DIR / "dataset"
+IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
 CLASS_NAMES = {
     0: "Chicken",
     1: "Drinker",
     2: "Feeder",
-    3: "Leg_Band_Green",    # → Hen1
-    4: "Leg_Band_Pink",     # → Hen5
-    5: "Leg_Band_Violet",   # → Hen3
-    6: "Leg_Band_White",    # → Hen2
-    7: "Leg_Band_Yellow",   # → Hen4
-    8: "Rooster"
+    3: "Leg_Band_Green",
+    4: "Leg_Band_Pink",
+    5: "Leg_Band_Violet",
+    6: "Leg_Band_White",
+    7: "Leg_Band_Yellow",
+    8: "Rooster",
 }
 
-# ---------------------------------------------------------------------------
-# Step 1 — Auto train/val split (80/20) if not already done
-# ---------------------------------------------------------------------------
-def split_dataset(val_ratio=0.20, seed=42):
-    """Split flat dataset/images + dataset/labels into train/val folders."""
-    for d in [train_img_dir, train_lbl_dir, val_img_dir, val_lbl_dir]:
-        os.makedirs(d, exist_ok=True)
 
-    # Collect images that have a matching label file
-    all_images = [
-        f for f in os.listdir(images_dir)
-        if f.lower().endswith((".jpg", ".jpeg", ".png"))
-    ]
-    paired = []
-    for img_name in all_images:
-        stem = os.path.splitext(img_name)[0]
-        lbl_path = os.path.join(labels_dir, stem + ".txt")
-        if os.path.isfile(lbl_path):
-            paired.append((img_name, stem + ".txt"))
-        else:
-            print(f"[WARN] No label found for {img_name} — skipping")
-
-    if not paired:
+def _collect_pairs(dataset_dir: Path):
+    images_dir = dataset_dir / "images"
+    labels_dir = dataset_dir / "labels"
+    if not images_dir.is_dir() or not labels_dir.is_dir():
         raise FileNotFoundError(
-            f"No paired image+label files found in {images_dir} / {labels_dir}"
+            f"Expected paired source folders at {images_dir} and {labels_dir}. "
+            "Collect and review images/labels before training."
         )
 
-    random.seed(seed)
-    random.shuffle(paired)
+    images = sorted(
+        path for path in images_dir.rglob("*")
+        if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES
+    )
+    if not images:
+        raise ValueError(f"No images found under {images_dir}")
 
-    n_val   = max(1, int(len(paired) * val_ratio))
-    val_set = set(p[0] for p in paired[:n_val])
+    pairs = []
+    expected_labels = set()
+    for image_path in images:
+        relative = image_path.relative_to(images_dir)
+        label_path = (labels_dir / relative).with_suffix(".txt")
+        if not label_path.is_file():
+            raise ValueError(f"Missing YOLO label file for image: {image_path}")
+        _validate_label_file(label_path)
+        pairs.append((relative, label_path.relative_to(labels_dir)))
+        expected_labels.add(label_path.resolve())
 
-    copied_train = copied_val = 0
-    for img_name, lbl_name in paired:
-        src_img = os.path.join(images_dir, img_name)
-        src_lbl = os.path.join(labels_dir, lbl_name)
-        if img_name in val_set:
-            shutil.copy(src_img, os.path.join(val_img_dir,   img_name))
-            shutil.copy(src_lbl, os.path.join(val_lbl_dir,   lbl_name))
-            copied_val += 1
+    orphan_labels = [
+        path for path in labels_dir.rglob("*.txt")
+        if path.resolve() not in expected_labels
+    ]
+    if orphan_labels:
+        raise ValueError(f"Found label files without matching images, e.g. {orphan_labels[0]}")
+    return pairs
+
+
+def _validate_label_file(path: Path) -> None:
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        values = line.split()
+        if not values:
+            continue
+        if len(values) != 5:
+            raise ValueError(f"{path}:{line_number}: expected class x_center y_center width height")
+        try:
+            class_id = int(values[0])
+            x_center, y_center, width, height = map(float, values[1:])
+        except ValueError as error:
+            raise ValueError(f"{path}:{line_number}: labels must be numeric") from error
+        if class_id not in CLASS_NAMES:
+            raise ValueError(f"{path}:{line_number}: class id {class_id} is outside 0..{len(CLASS_NAMES) - 1}")
+        if not all(0 <= value <= 1 for value in (x_center, y_center, width, height)):
+            raise ValueError(f"{path}:{line_number}: normalized coordinates must be between 0 and 1")
+        if width <= 0 or height <= 0:
+            raise ValueError(f"{path}:{line_number}: box width and height must be greater than zero")
+
+
+def _existing_split_counts(dataset_dir: Path):
+    split_dirs = [
+        dataset_dir / "train" / "images",
+        dataset_dir / "train" / "labels",
+        dataset_dir / "val" / "images",
+        dataset_dir / "val" / "labels",
+    ]
+    populated = [path for path in split_dirs if path.exists() and any(path.iterdir())]
+    if not populated:
+        return None
+    if len(populated) != 4:
+        raise ValueError(
+            "An existing train/val split is incomplete. Review it manually; "
+            "the training script will not overwrite or repair split folders."
+        )
+
+    counts = []
+    for split in ("train", "val"):
+        images_dir = dataset_dir / split / "images"
+        labels_dir = dataset_dir / split / "labels"
+        images = [
+            path for path in images_dir.rglob("*")
+            if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES
+        ]
+        if not images:
+            raise ValueError(f"Existing {split} split has no images")
+        for image_path in images:
+            label_path = labels_dir / image_path.relative_to(images_dir).with_suffix(".txt")
+            if not label_path.is_file():
+                raise ValueError(f"Missing label for existing split image: {image_path}")
+            _validate_label_file(label_path)
+        counts.append(len(images))
+    return tuple(counts)
+
+
+def split_dataset(
+    dataset_dir: Path = DEFAULT_DATASET_DIR,
+    val_ratio: float = 0.20,
+    seed: int = 42,
+    random_split: bool = False,
+    group_regex: str | None = None,
+):
+    """Create train/val folders without ever replacing an existing split.
+
+    By default, source subdirectories are kept together so frames from one
+    recording cannot leak into both train and validation. Flat collections
+    require an explicit --random-split or a --group-regex that extracts the
+    source-video key from each relative image path.
+    """
+    if not 0 < val_ratio < 1:
+        raise ValueError("Validation ratio must be greater than 0 and less than 1")
+
+    existing = _existing_split_counts(dataset_dir)
+    if existing is not None:
+        return existing
+
+    pairs = _collect_pairs(dataset_dir)
+    if len(pairs) < 2:
+        raise ValueError("At least two labeled images are required for a train/validation split")
+
+    compiled_group_pattern = re.compile(group_regex) if group_regex else None
+    groups = {}
+    image_groups = {}
+    for image_relative, label_relative in pairs:
+        if random_split:
+            group_key = str(image_relative)
+        elif compiled_group_pattern:
+            match = compiled_group_pattern.search(image_relative.as_posix())
+            if not match:
+                raise ValueError(f"Group pattern did not match image path: {image_relative}")
+            group_key = match.group(1) if match.groups() else match.group(0)
         else:
-            shutil.copy(src_img, os.path.join(train_img_dir, img_name))
-            shutil.copy(src_lbl, os.path.join(train_lbl_dir, lbl_name))
-            copied_train += 1
+            group_key = image_relative.parent.as_posix()
+            if group_key == ".":
+                raise ValueError(
+                    "Images are in one flat folder, so source-video leakage cannot be prevented. "
+                    "Put each recording in its own subfolder or pass --group-regex. "
+                    "Use --random-split only if that leakage risk is acceptable."
+                )
+        groups.setdefault(group_key, []).append((image_relative, label_relative))
+        image_groups[image_relative] = group_key
 
-    print(f"✅ Split complete → train: {copied_train}  val: {copied_val}")
-    return copied_train, copied_val
+    if len(groups) < 2:
+        raise ValueError("At least two source-video groups are required for a group-aware split")
+
+    group_keys = sorted(groups)
+    random.Random(seed).shuffle(group_keys)
+    target_val_count = max(1, round(len(pairs) * val_ratio))
+    val_keys = []
+    val_count = 0
+    for group_key in group_keys[:-1]:
+        if val_count >= target_val_count:
+            break
+        val_keys.append(group_key)
+        val_count += len(groups[group_key])
+    if not val_keys:
+        val_keys.append(group_keys[0])
+        val_count = len(groups[group_keys[0]])
+    val_key_set = set(val_keys)
+
+    for split in ("train", "val"):
+        (dataset_dir / split / "images").mkdir(parents=True, exist_ok=True)
+        (dataset_dir / split / "labels").mkdir(parents=True, exist_ok=True)
+
+    for image_relative, label_relative in pairs:
+        split = "val" if image_groups[image_relative] in val_key_set else "train"
+        for source_root, relative in (
+            (dataset_dir / "images", image_relative),
+            (dataset_dir / "labels", label_relative),
+        ):
+            destination = dataset_dir / split / source_root.name / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source_root / relative, destination)
+
+    return len(pairs) - val_count, val_count
 
 
-# Only split if train/val folders are empty or missing
-need_split = (
-    not os.path.isdir(train_img_dir)
-    or len(os.listdir(train_img_dir)) == 0
-)
+def write_dataset_yaml(dataset_dir: Path) -> Path:
+    try:
+        import yaml
+    except ImportError as error:
+        raise RuntimeError("PyYAML is required; install analytics/requirements.txt") from error
 
-if need_split:
-    print("📂 Splitting dataset into train/val (80/20)...")
-    split_dataset()
-else:
-    n_train = len(os.listdir(train_img_dir))
-    n_val   = len(os.listdir(val_img_dir))
-    print(f"📂 Using existing split → train: {n_train}  val: {n_val}")
+    config = {
+        "path": dataset_dir.resolve().as_posix(),
+        "train": "train/images",
+        "val": "val/images",
+        "nc": len(CLASS_NAMES),
+        "names": [CLASS_NAMES[index] for index in range(len(CLASS_NAMES))],
+    }
+    config_path = PROJECT_DIR / "dataset_config.yaml"
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    return config_path
 
-# ---------------------------------------------------------------------------
-# Step 2 — Write dataset_config.yaml
-# ---------------------------------------------------------------------------
-data_config = {
-    "path":  dataset_dir.replace("\\", "/"),
-    "train": "train/images",
-    "val":   "val/images",
-    "nc":    len(CLASS_NAMES),
-    "names": CLASS_NAMES,
-}
 
-yaml_path = os.path.join(project_dir, "dataset_config.yaml")
-with open(yaml_path, "w") as f:
-    yaml.dump(data_config, f, default_flow_style=False, sort_keys=False)
-print(f"✅ dataset_config.yaml written → {yaml_path}")
+def main():
+    parser = argparse.ArgumentParser(description="Validate and train the ChickenSee YOLO dataset")
+    parser.add_argument("--dataset-dir", type=Path, default=DEFAULT_DATASET_DIR)
+    parser.add_argument("--base-model", default="yolo26n.pt", help="Ultralytics base weights or local .pt path")
+    parser.add_argument("--epochs", type=int, default=150)
+    parser.add_argument("--image-size", type=int, default=640)
+    parser.add_argument("--batch", type=int, default=4)
+    parser.add_argument("--val-ratio", type=float, default=0.20)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--group-regex", help="Regex over relative image paths; capture group 1 is the recording key")
+    parser.add_argument(
+        "--random-split",
+        action="store_true",
+        help="Allow image-level random splitting; frames from the same video may leak across splits",
+    )
+    parser.add_argument("--name", default="poultry")
+    parser.add_argument("--device", help="Ultralytics device selector, such as cpu or 0")
+    args = parser.parse_args()
 
-# Remove stale cache so Ultralytics re-scans labels
-for cache in ["labels.cache", "train/labels.cache", "val/labels.cache"]:
-    cache_path = os.path.join(dataset_dir, cache)
-    if os.path.isfile(cache_path):
-        os.remove(cache_path)
-        print(f"🗑️  Removed stale cache: {cache_path}")
+    if args.epochs < 1 or args.image_size < 32 or args.batch < 1:
+        parser.error("epochs, image size, and batch must be positive")
 
-# ---------------------------------------------------------------------------
-# Step 3 — Load YOLOv26 Nano base model
-# ---------------------------------------------------------------------------
-base_model = os.path.join(project_dir, "yolo26n.pt")
-if not os.path.isfile(base_model):
-    raise FileNotFoundError(f"Base model not found: {base_model}")
+    try:
+        train_count, val_count = split_dataset(
+            dataset_dir=args.dataset_dir,
+            val_ratio=args.val_ratio,
+            seed=args.seed,
+            random_split=args.random_split,
+            group_regex=args.group_regex,
+        )
+        config_path = write_dataset_yaml(args.dataset_dir)
+        # Import only after input validation; importing train.py has no side effects.
+        from ultralytics import YOLO
 
-print(f"\n🚀 Fine-tuning YOLOv26 Nano: {base_model}")
-print(f"   Classes ({len(CLASS_NAMES)}): {list(CLASS_NAMES.values())}\n")
-model = YOLO(base_model)
+        model = YOLO(args.base_model)
+        train_options = {
+            "data": str(config_path),
+            "epochs": args.epochs,
+            "imgsz": args.image_size,
+            "batch": args.batch,
+            "close_mosaic": min(15, max(0, args.epochs - 1)),
+            "name": args.name,
+            "exist_ok": True,
+            "project": str(PROJECT_DIR / "runs" / "detect"),
+            "degrees": 10.0,
+            "fliplr": 0.5,
+            "mosaic": 1.0,
+            "scale": 0.9,
+            "hsv_h": 0.015,
+            "hsv_s": 0.7,
+            "hsv_v": 0.4,
+            "patience": 30,
+            "save_period": 25,
+            "seed": args.seed,
+            "verbose": True,
+        }
+        if args.device:
+            train_options["device"] = args.device
 
-# ---------------------------------------------------------------------------
-# Step 4 — Train
-# ---------------------------------------------------------------------------
-results = model.train(
-    data=yaml_path,
-    epochs=150,
-    imgsz=640,
-    batch=4,              # safe for most GPUs; increase if VRAM allows
-    close_mosaic=15,      # disable mosaic in last 15 epochs for clean boxes
-    name="poultry_v5",
-    exist_ok=True,
-    project=os.path.join(project_dir, "runs", "detect"),
-    # Augmentation — helps with small Leg_Band objects
-    degrees=10.0,
-    fliplr=0.5,
-    mosaic=1.0,
-    scale=0.9,            # INCREASED to 0.9 to force severe downscaling of crops
-    hsv_h=0.015,
-    hsv_s=0.7,
-    hsv_v=0.4,
-    patience=30,          # early stopping if no improvement for 30 epochs
-    save_period=25,       # checkpoint every 25 epochs
-    verbose=True,
-)
+        print(f"Training images: {train_count}; validation images: {val_count}")
+        print(f"Dataset config: {config_path}")
+        model.train(**train_options)
 
-# ---------------------------------------------------------------------------
-# Step 5 — Copy best weights to project root
-# ---------------------------------------------------------------------------
-best_weights  = os.path.join(
-    project_dir, "runs", "detect", "poultry_v5", "weights", "best.pt"
-)
-target_weights = os.path.join(project_dir, "custom_poultry.pt")
+        best_weights = PROJECT_DIR / "runs" / "detect" / args.name / "weights" / "best.pt"
+        if not best_weights.is_file():
+            raise FileNotFoundError(f"Training completed without the expected checkpoint: {best_weights}")
+        target_weights = PROJECT_DIR / "custom_poultry.pt"
+        shutil.copy2(best_weights, target_weights)
+        print(f"Best weights copied to: {target_weights}")
+    except (FileNotFoundError, ValueError, RuntimeError) as error:
+        parser.error(str(error))
 
-if os.path.isfile(best_weights):
-    shutil.copy(best_weights, target_weights)
-    print(f"\n🎉 Training complete!")
-    print(f"   Best weights → {target_weights}")
-else:
-    print("\n❌ Training finished but best.pt not found — check runs/ folder.")
+
+if __name__ == "__main__":
+    main()

@@ -65,12 +65,24 @@ class ZampenYOLOTracker:
     # Requires 10 more observations than current class before switching —
     # prevents a handful of mislabelled frames from flipping Rooster→Hen.
     CLASS_SWITCH_MARGIN = 10
-    # Keep per-track class history alive for 600 frames (~20 s at 30 fps).
+    # This counts processed frames: 600 updates is ~60 s at the default 10 inference FPS.
     CLASS_HISTORY_TTL_FRAMES = 600
-    MIN_DETECTION_CONFIDENCE = 0.70
+    # ByteTrack needs detections down to track_low_thresh for its second-stage
+    # recovery pass. A 0.70 floor silently disables that stage with the current YAML.
+    MIN_DETECTION_CONFIDENCE = 0.15
     REIDENTIFICATION_MAX_GAP_FRAMES = 30
     REIDENTIFICATION_DISTANCE_RATIO = 0.08
     REIDENTIFICATION_MIN_DISTANCE_PX = 50.0
+    REIDENTIFICATION_UNIQUENESS_RATIO = 1.25
+    # These five band colors are only valid as individual IDs when each color is
+    # assigned to exactly one hen in the flock. Unbanded birds remain video-local.
+    STABLE_BAND_IDS = {
+        "Hen1 (Green)": 1_000_001,
+        "Hen2 (White)": 1_000_002,
+        "Hen3 (Blue)": 1_000_003,
+        "Hen4 (Yellow)": 1_000_004,
+        "Hen5 (Pink)": 1_000_005,
+    }
 
     def __init__(self, model_weights: Optional[str] = None, tracker_yaml: Optional[str] = None):
         self.weights_path = self._resolve_weights(model_weights or CONFIG.model_name)
@@ -108,6 +120,7 @@ class ZampenYOLOTracker:
         self.short_id_map: Dict[int, int] = {}
         self._next_short_id = 1
         self.short_track_positions: Dict[int, Tuple[Tuple[float, float], int]] = {}
+        self.short_track_classes: Dict[int, str] = {}
 
     def _resolve_short_id(self, raw_track_id: Optional[int]) -> Optional[int]:
         if raw_track_id is None:
@@ -128,6 +141,7 @@ class ZampenYOLOTracker:
         self.short_id_map.clear()
         self._next_short_id = 1
         self.short_track_positions.clear()
+        self.short_track_classes.clear()
 
         predictor = getattr(self.model, "predictor", None)
         for tracker in getattr(predictor, "trackers", []):
@@ -138,12 +152,27 @@ class ZampenYOLOTracker:
         birds: List[TrackedDetection],
         frame_shape: Tuple[int, ...],
     ) -> None:
+        if not hasattr(self, "short_track_classes"):
+            self.short_track_classes = {}
         frame_diagonal = math.hypot(frame_shape[0], frame_shape[1])
         max_distance = max(
             self.REIDENTIFICATION_MIN_DISTANCE_PX,
             frame_diagonal * self.REIDENTIFICATION_DISTANCE_RATIO,
         )
         current_frame = self.processed_frame_count
+        expired_display_ids = {
+            display_id
+            for display_id, (_, last_seen) in self.short_track_positions.items()
+            if current_frame - last_seen > self.REIDENTIFICATION_MAX_GAP_FRAMES
+        }
+        for display_id in expired_display_ids:
+            self.short_track_positions.pop(display_id, None)
+            self.short_track_classes.pop(display_id, None)
+        self.short_id_map = {
+            raw_id: display_id
+            for raw_id, display_id in self.short_id_map.items()
+            if display_id in self.short_track_positions
+        }
         pending = []
         assigned_ids = set()
 
@@ -177,16 +206,45 @@ class ZampenYOLOTracker:
                 if display_id in assigned_ids or not 1 <= gap <= self.REIDENTIFICATION_MAX_GAP_FRAMES:
                     continue
                 distance = math.dist(center, last_center)
+                previous_class = getattr(self, "short_track_classes", {}).get(display_id)
+                if previous_class and (
+                    (previous_class == "Rooster") != (bird.class_name == "Rooster")
+                ):
+                    continue
                 if distance <= max_distance:
                     candidate_pairs.append(
                         (distance, display_id, raw_track_id, bird, center)
                     )
 
+        # Position alone is weak evidence in a flock. Relink only mutually
+        # nearest, clearly unambiguous pairs; tied/contested matches get a new ID.
+        best_for_raw: Dict[int, tuple] = {}
+        best_for_display: Dict[int, tuple] = {}
+        for pair in candidate_pairs:
+            distance, display_id, raw_track_id, _, _ = pair
+            if raw_track_id not in best_for_raw or distance < best_for_raw[raw_track_id][0]:
+                best_for_raw[raw_track_id] = pair
+            if display_id not in best_for_display or distance < best_for_display[display_id][0]:
+                best_for_display[display_id] = pair
+
+        def clearly_best(pair: tuple, candidates: List[tuple]) -> bool:
+            best_distance = pair[0]
+            alternatives = [candidate[0] for candidate in candidates if candidate is not pair]
+            return not alternatives or min(alternatives) > best_distance * self.REIDENTIFICATION_UNIQUENESS_RATIO
+
         matched_raw_ids = set()
-        for _, display_id, raw_track_id, bird, _ in sorted(
-            candidate_pairs, key=lambda pair: pair[:3]
-        ):
-            if display_id in assigned_ids or raw_track_id in matched_raw_ids:
+        for pair in sorted(candidate_pairs, key=lambda candidate: candidate[:3]):
+            distance, display_id, raw_track_id, bird, _ = pair
+            raw_options = [candidate for candidate in candidate_pairs if candidate[2] == raw_track_id]
+            display_options = [candidate for candidate in candidate_pairs if candidate[1] == display_id]
+            if (
+                best_for_raw.get(raw_track_id) is not pair
+                or best_for_display.get(display_id) is not pair
+                or not clearly_best(pair, raw_options)
+                or not clearly_best(pair, display_options)
+                or display_id in assigned_ids
+                or raw_track_id in matched_raw_ids
+            ):
                 continue
             for previous_raw_id, previous_display_id in list(self.short_id_map.items()):
                 if previous_display_id == display_id:
@@ -215,6 +273,19 @@ class ZampenYOLOTracker:
                 ((x1 + x2) / 2, (y1 + y2) / 2),
                 current_frame,
             )
+            self.short_track_classes[bird.track_id] = bird.class_name
+
+        # Stable, uniquely colored leg bands are the only current cross-video
+        # identity signal. ByteTrack and proximity IDs remain local to a video.
+        for bird in birds:
+            stable_id = self.STABLE_BAND_IDS.get(bird.bird_label)
+            if stable_id is not None:
+                bird.track_id = stable_id
+
+    @classmethod
+    def stable_band_identity_id(cls, label: str) -> Optional[int]:
+        """Return a deterministic ID only for a confirmed unique color band."""
+        return cls.STABLE_BAND_IDS.get(label)
 
     def _record_track_label(self, track_id: int, label: str) -> None:
         last_seen = self.track_label_last_seen.get(track_id)

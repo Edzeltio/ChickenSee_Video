@@ -1,0 +1,7 @@
+dataset/
+runs/
+agent/data/
+__pycache__/
+*.py[cod]
+*.pt
+dataset_config.yaml

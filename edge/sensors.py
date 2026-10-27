@@ -1,6 +1,6 @@
 """
 edge/sensors.py - Sensor Ingestion & Temporal Synchronization Hub.
-Supports Serial COM/RS485, HTTP/MQTT telemetry, and diurnal Farm Simulator.
+Supports Serial COM/RS485 telemetry and a diurnal Farm Simulator.
 Provides thread-safe sub-second timestamp pairing with computer vision frames.
 """
 
@@ -60,12 +60,19 @@ class SensorHub:
 
     def __init__(self, sensor_config: Optional[SensorConfig] = None):
         self.cfg = sensor_config or CONFIG.sensor
+        self.cfg.source_type = str(self.cfg.source_type).strip().lower()
+        if self.cfg.source_type not in ("serial", "simulation"):
+            raise ValueError(
+                f"Unsupported sensor source {self.cfg.source_type!r}; "
+                "implemented sources are 'serial' and 'simulation'."
+            )
         self._buffer: deque[SensorReading] = deque(maxlen=3600)  # Hold up to 1 hour of 1Hz telemetry
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._worker_thread: Optional[threading.Thread] = None
         self._latest_reading: Optional[SensorReading] = None
         self._serial_conn = None
+        self._last_error_log_at = 0.0
 
         # Start ingestion loop
         self.start()
@@ -107,11 +114,12 @@ class SensorHub:
                         self._latest_reading = reading
 
             except Exception as e:
-                # Fallback to simulation if hardware fails
-                reading = self._generate_simulated_reading()
-                with self._lock:
-                    self._buffer.append(reading)
-                    self._latest_reading = reading
+                # Missing/invalid hardware telemetry must not be replaced by plausible-looking
+                # simulated values in a production report.
+                now = time.monotonic()
+                if now - self._last_error_log_at >= 30.0:
+                    print(f"[SENSOR ERROR] {e}; no synthetic sample recorded.")
+                    self._last_error_log_at = now
 
             time.sleep(self.cfg.poll_interval_s)
 
@@ -165,47 +173,81 @@ class SensorHub:
             source="simulation"
         )
 
-    def _read_serial(self) -> Optional[SensorReading]:
-        """Reads JSON or CSV formatted telemetry from USB/RS485 microcontroller."""
-        try:
-            import serial
-            if self._serial_conn is None:
-                self._serial_conn = serial.Serial(
-                    self.cfg.serial_port, 
-                    self.cfg.serial_baud, 
-                    timeout=1.0
+    @staticmethod
+    def _parse_serial_line(line: str) -> SensorReading:
+        """Parse JSON or CSV telemetry; reject incomplete or physically invalid samples."""
+        text = line.strip()
+        if not text:
+            raise ValueError("Serial sensor sent an empty telemetry line")
+        if text.startswith("{"):
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError as error:
+                raise ValueError(f"Invalid JSON sensor line: {error}") from error
+            if not isinstance(data, dict):
+                raise ValueError("JSON sensor telemetry must be an object")
+            keys = ("temp", "hum", "nh3", "lux", "hopper", "water")
+            missing = [key for key in keys if key not in data]
+            if missing:
+                raise ValueError(
+                    "Serial JSON is missing required fields: " + ", ".join(missing)
                 )
-            
-            line = self._serial_conn.readline().decode('utf-8', errors='ignore').strip()
-            if not line:
-                return None
+            values = {key: data[key] for key in keys}
+        else:
+            parts = [part.strip() for part in text.split(",")]
+            if len(parts) != 6:
+                raise ValueError(
+                    "Serial CSV must contain six values in this order: "
+                    "temp,hum,nh3,lux,hopper,water"
+                )
+            values = dict(zip(("temp", "hum", "nh3", "lux", "hopper", "water"), parts))
 
-            # Expecting JSON: {"temp": 28.5, "hum": 68.2, "nh3": 12.4, "lux": 350}
-            data = json.loads(line)
-            temp = float(data.get("temp", 26.0))
-            hum = float(data.get("hum", 65.0))
-            nh3 = float(data.get("nh3", 10.0))
-            lux = float(data.get("lux", 200.0))
-            hopper = float(data.get("hopper", 40.0))
-            water = float(data.get("water", 0.5))
-
-            thi = calculate_thi(temp, hum)
-            stress = evaluate_heat_stress(thi)
-
-            return SensorReading(
-                timestamp=time.time(),
-                temperature_c=temp,
-                humidity_pct=hum,
-                ammonia_ppm=nh3,
-                lux=lux,
-                thi=thi,
-                feeder_hopper_kg=hopper,
-                water_flow_l_min=water,
-                heat_stress_level=stress,
-                source="serial"
+        try:
+            temp, hum, nh3, lux, hopper, water = (
+                float(values[key])
+                for key in ("temp", "hum", "nh3", "lux", "hopper", "water")
             )
-        except Exception:
+        except (TypeError, ValueError) as error:
+            raise ValueError("Serial sensor fields must all be numeric") from error
+
+        numeric_values = (temp, hum, nh3, lux, hopper, water)
+        if not all(math.isfinite(value) for value in numeric_values):
+            raise ValueError("Serial sensor fields must be finite numbers")
+        if not -20.0 <= temp <= 80.0:
+            raise ValueError(f"Temperature is outside the accepted range: {temp}")
+        if not 0.0 <= hum <= 100.0:
+            raise ValueError(f"Relative humidity must be between 0 and 100: {hum}")
+        if any(value < 0 for value in (nh3, lux, hopper, water)):
+            raise ValueError("Ammonia, lux, hopper load, and water flow cannot be negative")
+
+        thi = calculate_thi(temp, hum)
+        return SensorReading(
+            timestamp=time.time(),
+            temperature_c=temp,
+            humidity_pct=hum,
+            ammonia_ppm=nh3,
+            lux=lux,
+            thi=thi,
+            feeder_hopper_kg=hopper,
+            water_flow_l_min=water,
+            heat_stress_level=evaluate_heat_stress(thi),
+            source="serial",
+        )
+
+    def _read_serial(self) -> Optional[SensorReading]:
+        """Read one complete JSON/CSV sample from the configured USB/RS485 device."""
+        import serial
+
+        if self._serial_conn is None:
+            self._serial_conn = serial.Serial(
+                self.cfg.serial_port,
+                self.cfg.serial_baud,
+                timeout=1.0,
+            )
+        line = self._serial_conn.readline().decode("utf-8", errors="strict").strip()
+        if not line:
             return None
+        return self._parse_serial_line(line)
 
     def get_latest(self) -> Optional[SensorReading]:
         """Retrieve most recent sensor sample."""
