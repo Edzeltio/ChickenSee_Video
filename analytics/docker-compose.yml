@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  zampen-analytics:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zampen-analytics-pipeline
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - INFERENCE_DEVICE=cpu
+      - VIDEO_INPUT_DIR=/app/data/videos
+      - SENSOR_DB_PATH=/app/data/chicken_telemetry.db
+      - ANALYTICS_DB_PATH=/app/data/zampen_analytics.db
+      - LAG_HOURS=1
+      - CHUNK_MINUTES=30
+    volumes:
+      - ../agent/data:/app/data
+      - ../custom_poultry.pt:/app/custom_poultry.pt:ro
+      - ../bytetrack_poultry.yaml:/app/bytetrack_poultry.yaml:ro
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: '4.0'

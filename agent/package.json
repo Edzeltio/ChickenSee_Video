@@ -1,0 +1,19 @@
+{
+  "name": "chickensee-sync-agent",
+  "version": "1.0.0",
+  "description": "Optiplex Local File Watcher & Stream Uploader for MP4 and SQLite files",
+  "main": "watcher.js",
+  "type": "module",
+  "scripts": {
+    "setup": "node setup.js",
+    "start": "node watcher.js",
+    "startup:install": "powershell -ExecutionPolicy Bypass -File ./install-startup.ps1",
+    "startup:uninstall": "powershell -ExecutionPolicy Bypass -File ./uninstall-startup.ps1"
+  },
+  "dependencies": {
+    "chokidar": "^3.6.0",
+    "dotenv": "^16.4.7",
+    "form-data": "^4.0.0",
+    "node-fetch": "^3.3.2"
+  }
+}
