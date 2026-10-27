@@ -1,12 +1,10 @@
-"""
-analytics/config.py
-Configuration module for the ZAMPEN Native Layer Chicken Behavior & Sensor Analytics Pipeline.
-Optimized for local Dell OptiPlex edge execution with YOLO26 Nano and ByteTrack.
-"""
+"""Environment-driven configuration for local chicken video analytics."""
 
 import os
 from pathlib import Path
 from pydantic import BaseModel, Field
+
+from model_registry import resolve_model_path
 
 # Base directories
 BASE_DIR = Path(__file__).resolve().parent
@@ -21,11 +19,13 @@ class AnalyticsConfig(BaseModel):
     # Model & Tracker
     model_name: str = Field(
         default_factory=lambda: os.getenv("MODEL_NAME", "yolo26n.pt"),
-        description="YOLO model weights name or path",
+        description="Legacy model name; the active registry or MODEL_PATH selects runtime weights",
     )
     custom_weights_path: str = Field(
-        default_factory=lambda: os.getenv(
-            "MODEL_PATH", str(PROJECT_ROOT / "custom_poultry.pt")
+        default_factory=lambda: resolve_model_path(
+            PROJECT_ROOT,
+            env_path=os.getenv("MODEL_PATH"),
+            fallback_path=PROJECT_ROOT / "custom_poultry.pt",
         ),
         description="Optional fine-tuned poultry weights fallback"
     )
@@ -38,7 +38,10 @@ class AnalyticsConfig(BaseModel):
         ),
         description="ByteTrack YAML tracker configuration"
     )
-    device: str = Field(default=os.getenv("INFERENCE_DEVICE", "cpu"), description="'cpu' or '0' for CUDA")
+    device: str = Field(
+        default_factory=lambda: os.getenv("INFERENCE_DEVICE", "auto"),
+        description="auto, cpu, mps, or CUDA device index such as 0",
+    )
     conf_threshold: float = Field(
         default_factory=lambda: float(os.getenv("CONF_THRESHOLD", "0.15")),
         description="Detector floor; keep at or below ByteTrack track_low_thresh for recovery matches",

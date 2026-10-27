@@ -1,6 +1,6 @@
-# 🐔 ChickenSee — OptiPlex Server Integration & Setup Guide
+# 🐔 ChickenSee — Local Server Integration & Setup Guide
 
-A complete, step-by-step guide to installing, configuring, and running the **ChickenSee Vision & Telemetry System** on your local Dell OptiPlex server and integrating it seamlessly with your Vercel cloud portal.
+A complete, step-by-step guide to installing, configuring, and running the **ChickenSee Vision & Telemetry System** on a local computer and integrating it with your Vercel cloud portal. For CPU/GPU selection and versioned model updates, see `POULTRY_TRACKING_GUIDE.md`.
 
 ---
 
@@ -8,7 +8,7 @@ A complete, step-by-step guide to installing, configuring, and running the **Chi
 
 ```mermaid
 flowchart TD
-    subgraph OptiPlex["🖥️ Local OptiPlex Server (Windows 10/11)"]
+    subgraph OptiPlex["🖥️ Local Edge Computer (Windows/Linux/macOS)"]
         Cam["📹 Farm Cameras / Recorders"] -->|"Save MP4s"| WatchFolders["📁 Watched Video Folders"]
         Sensors["🌡️ Environmental Sensors"] -->|"Log Telemetry"| SQLite["sensors.sqlite"]
         
@@ -31,9 +31,9 @@ flowchart TD
 
 ---
 
-## 📋 Prerequisites on the OptiPlex
+## 📋 Local computer prerequisites
 
-Before starting, ensure your Dell OptiPlex has the following installed:
+Before starting, ensure the local computer has Python 3.10–3.12 and access to the video files or camera. CPU inference is the baseline; supported GPU backends are selected automatically.
 
 1. **Operating System**: Windows 10 or 11 (64-bit).
 2. **Python**: Python 3.10, 3.11, or 3.12:
@@ -50,21 +50,21 @@ Before starting, ensure your Dell OptiPlex has the following installed:
      npm --version
      ```
 4. **Git**: [Download Git for Windows](https://git-scm.com/) (optional, but recommended).
-5. **Model Weights**: Ensure `custom_poultry.pt` is in the repository root folder.
+5. **Model Weights**: Put a compatible poultry `.pt` file in `models/` and activate it with `python model_manager.py activate --latest`. Legacy installs can continue using `custom_poultry.pt`.
 
 ---
 
 ## 🚀 Step 1: Clone or Copy the Repository
 
-Place the project on your OptiPlex (e.g., in `C:\Users\<YourUser>\Documents\ChickenSee_Videos(sql)` or `C:\ChickenSee`):
+Place the project in a writable local folder (for example, `C:\ChickenSee` on Windows or `/opt/chickensee` on Linux):
 
 ```powershell
 cd C:\Users\<YourUser>\Documents\ChickenSee_Videos(sql)
 ```
 
-Confirm that `custom_poultry.pt` and `favicon.ico` are in the folder:
+Confirm that the active model and `favicon.ico` are available:
 ```powershell
-Test-Path custom_poultry.pt
+python model_manager.py list
 Test-Path favicon.ico
 ```
 
@@ -134,7 +134,7 @@ In your [Vercel Dashboard](https://vercel.com/dashboard) under **Settings → En
 | `SUPABASE_URL` | Project URL shown in Supabase API settings | `https://stovfnbqgufxtpaoznbv.supabase.co` |
 | `SUPABASE_STORAGE_BUCKET` | Private bucket created for sync | `chickensee-sync` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase server-only service-role key; never expose to browser or desktop agent | Set directly in Vercel; do not commit |
-| `SYNC_SECRET` | Secret key matching the OptiPlex desktop app | Generate a high-entropy value |
+| `SYNC_SECRET` | Secret key matching the local desktop app | Generate a high-entropy value |
 | `DASHBOARD_PASSWORD` | Password you use to log in to the web portal | `farm-admin-2026` |
 | `JWT_SECRET` | 32-character random string for session tokens | `a-secure-random-32-char-string` |
 
@@ -166,7 +166,7 @@ The analytics API is the single writer for `results/queue_status.json`; the Cont
 
 ## 🔄 Step 7: Enable 24/7 Autostart on Boot
 
-To make sure ChickenSee automatically runs whenever the OptiPlex boots up:
+To make sure ChickenSee automatically runs whenever the local computer boots up:
 
 1. In ChickenSee Control Center, go to the **Setup** tab.
 2. Click **"Enable startup"**.
@@ -174,13 +174,13 @@ To make sure ChickenSee automatically runs whenever the OptiPlex boots up:
    - A **ChickenSee Control Center** shortcut on your Windows Desktop (with the official icon).
    - The `startup\start-chickensee.bat` launcher in Windows Startup (`ChickenSee.lnk`) and the current user's Run key. It starts the background supervisor, which launches the watcher, API, and analyzer when your Windows user signs in.
 
-> **To verify autostart:** Restart the OptiPlex and sign in. Within 15 seconds, the services will start automatically in the background.
+> **To verify autostart:** Restart the local computer. Confirm the services start in the background.
 
 ---
 
-## 📁 Key File Locations on OptiPlex
+## 📁 Key local file locations
 
-| Item | Location on OptiPlex |
+| Item | Location on the local computer |
 |---|---|
 | **Desktop App Shortcut** | `Desktop\ChickenSee Control Center.lnk` |
 | **Startup Shortcut** | `shell:startup\ChickenSee.lnk` |
@@ -205,4 +205,4 @@ To make sure ChickenSee automatically runs whenever the OptiPlex boots up:
 - **View Live Logs**:
   Click **"Open logs"** on the Dashboard to inspect `worker.log`, `watcher.log`, or `api.log`.
 - **API Documentation**:
-  Visit `http://127.0.0.1:8000/docs` in your browser on the OptiPlex to interactively query the local FastAPI service.
+  Visit `http://127.0.0.1:8000/docs` in a browser on the local computer to query the FastAPI service.

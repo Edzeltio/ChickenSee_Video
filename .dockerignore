@@ -1,0 +1,15 @@
+*.pt
+*.db
+dataset/
+runs/
+agent/data/
+models/active.json
+node_modules/
+.next/
+analytics/venv/
+venv/
+__pycache__/
+*.py[cod]
+.git/
+.replit
+.replitignore

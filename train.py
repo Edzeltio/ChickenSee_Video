@@ -8,23 +8,17 @@ import argparse
 import random
 import re
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
+
+from device_utils import resolve_torch_device
+from model_registry import POULTRY_CLASS_NAMES, activate_model
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
 DEFAULT_DATASET_DIR = PROJECT_DIR / "dataset"
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png"}
-CLASS_NAMES = {
-    0: "Chicken",
-    1: "Drinker",
-    2: "Feeder",
-    3: "Leg_Band_Green",
-    4: "Leg_Band_Pink",
-    5: "Leg_Band_Violet",
-    6: "Leg_Band_White",
-    7: "Leg_Band_Yellow",
-    8: "Rooster",
-}
+CLASS_NAMES = dict(enumerate(POULTRY_CLASS_NAMES))
 
 
 def _collect_pairs(dataset_dir: Path):
@@ -234,7 +228,11 @@ def main():
         help="Allow image-level random splitting; frames from the same video may leak across splits",
     )
     parser.add_argument("--name", default="poultry")
-    parser.add_argument("--device", help="Ultralytics device selector, such as cpu or 0")
+    parser.add_argument(
+        "--device",
+        default="auto",
+        help="auto, cpu, mps, or CUDA index such as 0 (default: auto)",
+    )
     args = parser.parse_args()
 
     if args.epochs < 1 or args.image_size < 32 or args.batch < 1:
@@ -274,8 +272,7 @@ def main():
             "seed": args.seed,
             "verbose": True,
         }
-        if args.device:
-            train_options["device"] = args.device
+        train_options["device"] = resolve_torch_device(args.device)
 
         print(f"Training images: {train_count}; validation images: {val_count}")
         print(f"Dataset config: {config_path}")
@@ -284,10 +281,17 @@ def main():
         best_weights = PROJECT_DIR / "runs" / "detect" / args.name / "weights" / "best.pt"
         if not best_weights.is_file():
             raise FileNotFoundError(f"Training completed without the expected checkpoint: {best_weights}")
-        target_weights = PROJECT_DIR / "custom_poultry.pt"
+        model_dir = PROJECT_DIR / "models"
+        model_dir.mkdir(parents=True, exist_ok=True)
+        safe_name = re.sub(r"[^A-Za-z0-9._-]+", "-", args.name).strip(".-_") or "poultry"
+        version = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        target_weights = model_dir / f"{safe_name}-{version}.pt"
         shutil.copy2(best_weights, target_weights)
-        print(f"Best weights copied to: {target_weights}")
-    except (FileNotFoundError, ValueError, RuntimeError) as error:
+        target_weights.touch()
+        manifest = activate_model(target_weights, PROJECT_DIR)
+        print(f"Best weights saved as version: {target_weights}")
+        print(f"Activated weights SHA-256: {manifest['sha256']}")
+    except (FileNotFoundError, OSError, ValueError, RuntimeError) as error:
         parser.error(str(error))
 
 

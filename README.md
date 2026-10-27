@@ -1,6 +1,6 @@
 # ChickenSee: Optiplex-to-Vercel Results & SQLite Sync Portal
 
-A bridge connecting an on-premise local server (Dell Optiplex) with a Vercel-hosted Next.js web application. Analysis results, live queue status and detection previews, and SQLite telemetry sync to Vercel; video files remain local and are never uploaded.
+A bridge connecting an on-premise local computer with a Vercel-hosted Next.js web application. Analysis results, live queue status and detection previews, and SQLite telemetry sync to Vercel; video files remain local and are never uploaded.
 
 ```
 ┌────────────────────────────────┐                 ┌────────────────────────────────┐
@@ -83,7 +83,7 @@ A bridge connecting an on-premise local server (Dell Optiplex) with a Vercel-hos
 
 ### 2. Install the ChickenSee Control Center on Windows
 
-On the OptiPlex, install the Python analytics and Node sync-agent dependencies:
+On the local edge computer, install the Python analytics and Node sync-agent dependencies:
 ```powershell
 python -m pip install -r analytics\requirements.txt
 Push-Location agent
@@ -107,7 +107,7 @@ See [SETUP_GUIDE.md](./SETUP_GUIDE.md) for full Windows setup, test, and trouble
 ## 🔒 Security & Architecture Highlights
 
 1. **Selective Cloud Sync:**
-   The OptiPlex watcher requests short-lived signed upload URLs from the Vercel API and sends JSON analysis results, prioritized queue status and live JPEG previews, and SQLite databases directly to the private Supabase Storage bucket. MP4 files are excluded by both the local sync agent and the upload API, and remain in local storage.
+   The local watcher requests short-lived signed upload URLs from the Vercel API and sends JSON analysis results, prioritized queue status and live JPEG previews, and SQLite databases directly to the private Supabase Storage bucket. MP4 files are excluded by both the local sync agent and the upload API, and remain in local storage.
 
 2. **Serverless SQLite Inspection via WebAssembly:**
    Traditional native bindings like `better-sqlite3` fail or require custom build steps on AWS Lambda/Vercel serverless environments. This application utilizes **`sql.js` (WebAssembly)**, downloading the private database buffer from Supabase Storage on demand and executing read queries in pure WebAssembly.
@@ -122,7 +122,7 @@ See [SETUP_GUIDE.md](./SETUP_GUIDE.md) for full Windows setup, test, and trouble
 
 ## 🐔 Edge AI Computer Vision & Behavior Telemetry Pipeline
 
-The edge processing hub running on the Dell OptiPlex server includes a high-performance computer vision, tracking, behavior classification, and sensor synchronization pipeline located in the `edge/` directory.
+The local edge processing hub includes computer vision, tracking, behavior classification, and sensor synchronization in the `edge/` directory. It selects CPU, supported CUDA/ROCm, or Apple MPS inference according to the local PyTorch installation.
 
 ### Key Components:
 - **`edge/detector.py`**: Runs YOLO inference and ByteTrack association (`bytetrack_poultry.yaml`), with colored leg-band recognition and HSV fallback. Band colors are not general appearance Re-ID; see the tracking guide for cross-video identity limits. Expired track, smoothing, and display-ID state is pruned during long runs.
@@ -142,7 +142,7 @@ python edge/test_pipeline.py
 # 2. Run the pipeline interactively with live display:
 python -m edge.pipeline --view --force-start
 
-# 3. Run in headless server mode on Dell OptiPlex:
+# 3. Run in headless mode on the local edge computer:
 python -m edge.pipeline
 
 # 4. Install as persistent Windows Service (auto-start on boot):

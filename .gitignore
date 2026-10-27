@@ -1,9 +1,12 @@
 __pycache__/
 *.py[cod]
 .venv/
+venv/
+analytics/venv/
 dataset/
 runs/
 agent/data/
 *.pt
+models/active.json
 dataset_config.yaml
 *.processing.mp4

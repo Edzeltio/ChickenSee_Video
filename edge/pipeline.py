@@ -1,5 +1,5 @@
 """
-edge/pipeline.py - Production Master Edge AI Pipeline for Dell OptiPlex.
+edge/pipeline.py - Local poultry tracking and sensor pipeline.
 Combines camera stream ingestion, YOLO26n Re-ID inference, behavior analysis,
 sensor synchronization, 6 AM - 6 PM hourly aggregation, and edge watchdog recovery.
 """
@@ -27,8 +27,7 @@ from local_store import copy_video_locally
 
 class EdgePipelineManager:
     """
-    Production-grade edge vision and telemetry pipeline.
-    Runs continuously on Dell OptiPlex edge hub.
+    Local edge vision and telemetry pipeline with configurable hardware.
     """
 
     def __init__(
@@ -46,7 +45,7 @@ class EdgePipelineManager:
         self._running = False
         
         print("\n" + "=" * 65)
-        print("    🐔 ChickenSee Edge AI Monitoring Pipeline — OptiPlex Hub")
+        print("    ChickenSee local poultry tracking pipeline")
         print("=" * 65)
 
         # 1. Initialize Components
@@ -257,7 +256,7 @@ class EdgePipelineManager:
                         self.cap.release()
                         self.cap = None
 
-                    # Sleep cleanly to avoid consuming CPU cycles on OptiPlex
+                    # Sleep cleanly while outside configured operating hours.
                     print(f"[SCHEDULE] Standby mode active ({now_dt.strftime('%H:%M:%S')}). Waking in 30s to check schedule...")
                     time.sleep(30.0)
                     continue
@@ -378,8 +377,10 @@ class EdgePipelineManager:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="ChickenSee Edge AI Pipeline - Dell OptiPlex Hub")
+    parser = argparse.ArgumentParser(description="ChickenSee local poultry tracking pipeline")
     parser.add_argument("--source", type=str, default=None, help="Video stream URL, device index, or file path")
+    parser.add_argument("--model", type=str, default=None, help="Path to compatible .pt weights (overrides model registry)")
+    parser.add_argument("--device", type=str, default=None, help="auto, cpu, mps, or CUDA index such as 0")
     parser.add_argument("--view", action="store_true", help="Display live OpenCV overlay window")
     parser.add_argument("--record", action="store_true", default=None, help="Force enable annotated video recording to disk")
     parser.add_argument("--no-record", action="store_true", help="Disable annotated video recording")
@@ -390,6 +391,10 @@ def main():
 
     if args.source:
         CONFIG.vision.video_source = args.source
+    if args.model:
+        CONFIG.vision.model_path = str(Path(args.model).expanduser().resolve())
+    if args.device:
+        CONFIG.vision.inference_device = args.device
 
     if args.force_start:
         # Extend operational window for immediate testing regardless of local clock

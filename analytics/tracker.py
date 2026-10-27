@@ -1,6 +1,6 @@
 """
 analytics/tracker.py
-Ultralytics YOLO26 Nano + ByteTrack Multi-Object Tracking Engine for Dell OptiPlex.
+Ultralytics poultry detection and ByteTrack multi-object tracking engine.
 Executes model.track(..., tracker="bytetrack.yaml", persist=True) for temporal bird tracking.
 """
 
@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import List, Dict, Tuple, Optional, Any
 from dataclasses import dataclass
 from ultralytics import YOLO
+from device_utils import resolve_torch_device
+from model_registry import validate_poultry_classes
 
 from .config import BASE_DIR, CONFIG, PROJECT_ROOT
 from legband import (
@@ -85,16 +87,20 @@ class ZampenYOLOTracker:
     }
 
     def __init__(self, model_weights: Optional[str] = None, tracker_yaml: Optional[str] = None):
-        self.weights_path = self._resolve_weights(model_weights or CONFIG.model_name)
+        self.weights_path = self._resolve_weights(
+            model_weights or CONFIG.custom_weights_path,
+            strict=model_weights is not None,
+        )
         self.tracker_yaml = tracker_yaml or CONFIG.tracker_config
-        self.device = CONFIG.device
+        self.device = resolve_torch_device(CONFIG.device)
         self.conf = CONFIG.conf_threshold
         self.iou = CONFIG.iou_threshold
         self.imgsz = CONFIG.imgsz
 
-        print(f"[TRACKER] Initializing YOLO26 Nano from: {self.weights_path}")
+        print(f"[TRACKER] Initializing YOLO weights from: {self.weights_path}")
         print(f"[TRACKER] Using ByteTrack config: {self.tracker_yaml}")
         self.model = YOLO(self.weights_path)
+        validate_poultry_classes(self.model.names)
 
         # Standard poultry class mapping
         self.class_map = {
@@ -311,26 +317,27 @@ class ZampenYOLOTracker:
                 if count >= current_count + 5:
                     self.track_label_cache[track_id] = resolved_label
 
-    def _resolve_weights(self, desired_name: str) -> str:
-        """Finds or resolves the weights path, checking local files and fallbacks."""
-        # 1. Exact path or in current/root directory
-        candidates = [
-            Path(desired_name),
-            PROJECT_ROOT / desired_name,
-            BASE_DIR / desired_name,
-            Path(CONFIG.custom_weights_path),
-            PROJECT_ROOT / "custom_poultry.pt",
-            PROJECT_ROOT / "yolo26n.pt",
-            PROJECT_ROOT / "yolo11n.pt",
-            PROJECT_ROOT / "yolov8n.pt",
-        ]
+    def _resolve_weights(self, desired_name: str, strict: bool = False) -> str:
+        """Resolve the selected poultry model without silently choosing generic YOLO weights."""
+        desired = Path(desired_name).expanduser()
+        candidates = [desired]
+        if not desired.is_absolute():
+            candidates.extend((PROJECT_ROOT / desired, BASE_DIR / desired))
 
-        for cand in candidates:
-            if cand and cand.is_file():
-                return str(cand.resolve())
+        for candidate in candidates:
+            if candidate.is_file():
+                return str(candidate.resolve())
 
-        # If desired is a standard ultralytics weight name, YOLO will auto-download
-        return desired_name
+        if strict:
+            raise FileNotFoundError(f"Requested model weights do not exist: {desired}")
+
+        configured = Path(CONFIG.custom_weights_path).expanduser()
+        if configured.is_file():
+            return str(configured.resolve())
+
+        # Returning the configured path makes the startup error name the missing
+        # poultry model instead of downloading incompatible generic class weights.
+        return str(configured.resolve())
 
     def _resolve_track_class(
         self, cls_id: int, confidence: float, track_id: Optional[int]

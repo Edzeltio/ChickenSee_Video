@@ -61,7 +61,7 @@ START_TIME = datetime.datetime.utcnow()
 @app.get("/health", response_model=HealthResponse, tags=["System Health"])
 def get_health():
     """
-    Check worker daemon status, CPU/RAM utilization, and model availability on the OptiPlex.
+    Check worker status, local system utilization, and model availability.
     """
     uptime = (datetime.datetime.utcnow() - START_TIME).total_seconds()
     cpu_pct = psutil.cpu_percent(interval=None)

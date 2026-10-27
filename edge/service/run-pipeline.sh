@@ -8,7 +8,7 @@ PROJECT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${PROJECT_DIR}" || exit 1
 
 echo "=============================================================="
-echo "   ChickenSee Edge AI Monitoring Daemon (Linux OptiPlex)"
+echo "   ChickenSee local edge tracking service (Linux)"
 echo "=============================================================="
 echo "[START] Project directory: ${PROJECT_DIR}"
 echo "[START] Active Hours: 06:00:00 to 18:00:00 daily"

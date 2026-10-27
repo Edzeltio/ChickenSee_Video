@@ -10,7 +10,7 @@ $ProjectDir = (Get-Item "$ScriptDir\..\..").FullName
 $RunnerBat  = "$ScriptDir\start-pipeline.bat"
 
 Write-Host "============================================================" -ForegroundColor Cyan
-Write-Host " ChickenSee Edge AI Service Installer (Windows OptiPlex)" -ForegroundColor Cyan
+Write-Host " ChickenSee Edge AI Service Installer (Windows)" -ForegroundColor Cyan
 Write-Host "============================================================" -ForegroundColor Cyan
 
 # Check if task already exists

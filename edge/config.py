@@ -1,11 +1,10 @@
-"""
-edge/config.py - Centralized Configuration for ChickenSee Edge AI Pipeline.
-Optimized for local deployment on Dell OptiPlex edge hardware.
-"""
+"""Centralized, environment-driven configuration for the local edge pipeline."""
 
 import os
 from pathlib import Path
 from dataclasses import dataclass, field
+
+from model_registry import resolve_model_path
 
 # Base paths
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -19,10 +18,17 @@ REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 @dataclass
 class VisionConfig:
     # Model Weights
-    model_path: str = os.getenv("MODEL_PATH", str(ROOT_DIR / "custom_poultry.pt"))
+    model_path: str = field(
+        default_factory=lambda: resolve_model_path(
+            ROOT_DIR,
+            env_path=os.getenv("MODEL_PATH"),
+            fallback_path=ROOT_DIR / "custom_poultry.pt",
+        )
+    )
     tracker_config: str = os.getenv("TRACKER_CONFIG", str(ROOT_DIR / "bytetrack_poultry.yaml"))
     
-    # Inference Tuning for Dell OptiPlex CPU/GPU
+    # Inference tuning and hardware selection
+    inference_device: str = os.getenv("INFERENCE_DEVICE", "auto")
     inference_size: int = int(os.getenv("INFERENCE_SIZE", "640"))
     conf_threshold: float = float(os.getenv("CONF_THRESHOLD", "0.15"))
     iou_threshold: float = float(os.getenv("IOU_THRESHOLD", "0.45"))

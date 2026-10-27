@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # analytics/bootstrap.sh
-# 1-Click Bootstrap Script for Linux / WSL / Ubuntu OptiPlex Server
+# Local Linux/WSL setup and launch helper
 
 set -e
 
 echo "═══════════════════════════════════════════════════════════════"
 echo "  ZAMPEN Native Layer Chicken Analytics Pipeline Bootstrap"
-echo "  Dell OptiPlex Edge Hub (YOLO26 Nano + ByteTrack)"
+echo "  Local poultry analytics (compatible YOLO + ByteTrack)"
 echo "═══════════════════════════════════════════════════════════════"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,19 +21,23 @@ if [ ! -d "$SCRIPT_DIR/venv" ]; then
     python3 -m venv "$SCRIPT_DIR/venv"
 fi
 source "$SCRIPT_DIR/venv/bin/activate"
+export PYTHONPATH="$PROJECT_ROOT"
 
 # 3. Dependencies
 echo "[STEP 2/4] Installing Python requirements..."
 pip install --upgrade pip --quiet
 pip install -r "$SCRIPT_DIR/requirements.txt" --quiet
 
-# 4. Initialize Database
-echo "[STEP 3/4] Initializing Database Schema..."
-export PYTHONPATH="$PROJECT_ROOT"
+# 4. Check dependencies, hardware selection, and the active compatible model.
+echo "[STEP 3/5] Checking setup and active weights..."
+python "$PROJECT_ROOT/setup_check.py"
+
+# 5. Initialize Database
+echo "[STEP 4/5] Initializing Database Schema..."
 python3 -c "from analytics.database import DB; DB.init_db(); print('[OK] Database initialized successfully.')"
 
-# 5. Launch Services
-echo "[STEP 4/4] Launching FastAPI and Worker Daemon..."
+# 6. Launch Services
+echo "[STEP 5/5] Launching FastAPI and Worker Daemon..."
 echo "  API Docs : http://localhost:8000/docs"
 echo "  Health   : http://localhost:8000/health"
 echo "  Latest   : http://localhost:8000/results/latest"

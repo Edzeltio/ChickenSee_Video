@@ -2,7 +2,7 @@
 
 Automated edge behavior-analysis and sensor-aggregation pipeline for the **"Vision-Based Identification and Behavior Monitoring of ZAMPEN Native Layer Chickens"** capstone project.
 
-Designed and optimized for local edge deployment on a **Dell OptiPlex server**, using strictly **Ultralytics YOLO26 Nano (`yolo26n.pt`)** paired with the **ByteTrack** multi-object tracking algorithm (`bytetrack.yaml`).
+Designed for local deployment on Windows, Linux, or macOS systems supported by PyTorch and OpenCV. The detector loads a compatible nine-class poultry `.pt` file from the shared active-model registry and uses ByteTrack for within-video association. CPU is the portable baseline; supported CUDA/ROCm and Apple MPS devices can be selected automatically.
 
 ---
 
@@ -99,7 +99,7 @@ analytics/
 
 ---
 
-## 1-Click Quickstart on Dell OptiPlex
+## Local quickstart
 
 ### Method 1: Windows PowerShell (Native)
 
@@ -113,7 +113,7 @@ cd c:\Users\Kairi\Documents\ChickenSee_Videos(sql)\analytics
 The bootstrap script will automatically:
 1. Verify Python 3.10+ installation.
 2. Install / verify dependencies (`ultralytics`, `fastapi`, `sqlalchemy`, `opencv-python`, etc.).
-3. Verify `yolo26n.pt` weights and `bytetrack.yaml` tracker configuration.
+3. Run `python setup_check.py`, then verify the active compatible weights with `python model_manager.py list`.
 4. Initialize the SQLite database schema (`zampen_analytics.db`).
 5. Launch both the FastAPI API server and the Background Worker Daemon.
 
@@ -160,9 +160,9 @@ GET /health
     "active_processing_job": null
   },
   "model": {
-    "detector": "yolo26n.pt",
+    "detector": "active poultry model",
     "tracker": "bytetrack_poultry.yaml",
-    "device": "cpu"
+    "device": "auto"
   }
 }
 ```

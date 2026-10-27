@@ -1,6 +1,6 @@
 """
 ZAMPEN Native Layer Chicken Behavior & Sensor Analytics Pipeline.
-Optimized for local Dell OptiPlex edge execution with YOLO26 Nano + ByteTrack.
+Supports local CPU and supported PyTorch GPU inference.
 """
 
 __version__ = "1.0.0"

@@ -1,7 +1,4 @@
-"""
-edge/detector.py - Production-grade YOLO26n Inference & Poultry Re-ID Engine.
-Optimized for continuous 12-hour operation on Dell OptiPlex edge hardware.
-"""
+"""Portable YOLO poultry detection and ByteTrack inference engine."""
 
 import os
 import cv2
@@ -13,6 +10,8 @@ from dataclasses import dataclass, field
 from ultralytics import YOLO
 
 from .config import CONFIG, VisionConfig
+from device_utils import resolve_torch_device
+from model_registry import validate_poultry_classes
 from legband import (
     BAND_CLASS_TO_HEN,
     detect_leg_band_color,
@@ -67,22 +66,24 @@ class FrameInferenceResult:
 
 class PoultryInferenceEngine:
     """
-    High-performance Edge YOLO26n inference and ByteTrack manager.
-    Designed for resource-constrained Dell OptiPlex edge deployment.
+    Edge YOLO inference and ByteTrack manager with portable device selection.
     """
 
     def __init__(self, vision_config: Optional[VisionConfig] = None):
         self.cfg = vision_config or CONFIG.vision
         
-        # 1. Hardware Detection & Threading Optimization for OptiPlex
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        # 1. Select CPU, CUDA/ROCm, or Apple MPS from the configured preference.
+        self.device = resolve_torch_device(self.cfg.inference_device, torch)
         if self.device == "cpu":
-            num_threads = min(self.cfg.num_cpu_threads, os.cpu_count() or 4)
+            num_threads = max(1, min(self.cfg.num_cpu_threads, os.cpu_count() or 1))
             torch.set_num_threads(num_threads)
-            print(f"[ENGINE] Hardware: Dell OptiPlex CPU mode ({num_threads} threads configured)")
+            print(f"[ENGINE] Hardware: CPU mode ({num_threads} threads configured)")
+        elif self.device == "mps":
+            print("[ENGINE] Hardware: Apple Metal Performance Shaders (MPS)")
         else:
-            gpu_name = torch.cuda.get_device_name(0)
-            print(f"[ENGINE] Hardware: CUDA GPU accelerated ({gpu_name})")
+            primary_device = int(self.device.split(",")[0])
+            gpu_name = torch.cuda.get_device_name(primary_device)
+            print(f"[ENGINE] Hardware: PyTorch GPU device {primary_device} ({gpu_name})")
 
         # 2. Model Loading
         model_path = self.cfg.model_path
@@ -92,6 +93,7 @@ class PoultryInferenceEngine:
         print(f"[ENGINE] Loading custom poultry weights: {model_path}")
         self.model = YOLO(model_path)
         self.class_names = self.model.names if hasattr(self.model, "names") else {}
+        validate_poultry_classes(self.class_names)
         print(f"[ENGINE] Classes loaded ({len(self.class_names)}): {self.class_names}")
 
         # 3. Tracker Configuration
@@ -122,7 +124,12 @@ class PoultryInferenceEngine:
         try:
             dummy = np.zeros((self.cfg.inference_size, self.cfg.inference_size, 3), dtype=np.uint8)
             with torch.inference_mode():
-                self.model(dummy, verbose=False, imgsz=self.cfg.inference_size)
+            self.model(
+                dummy,
+                verbose=False,
+                imgsz=self.cfg.inference_size,
+                device=self.device,
+            )
             print("[ENGINE] Inference engine warmed up successfully.")
         except Exception as e:
             print(f"[ENGINE] Warm-up notice: {e}")
@@ -177,7 +184,7 @@ class PoultryInferenceEngine:
 
         orig_h, orig_w = frame.shape[:2]
 
-        # Input downscaling for OptiPlex speed if needed
+        # Optional input downscaling for lower-powered machines.
         work_frame = frame
         scale_w = 1.0
         scale_h = 1.0

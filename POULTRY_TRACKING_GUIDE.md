@@ -17,22 +17,47 @@ For cross-video individuals, a detected uniquely assigned colored leg band is th
 
 ## Install and configure
 
-Use Python 3.10–3.12 on the local Windows or Linux computer that can access the videos and camera:
+Use Python 3.10–3.12 on a Windows, Linux, or macOS computer that can access the videos and camera. CPU inference is the portable baseline. CUDA/ROCm GPU inference or Apple MPS is selected automatically when the installed PyTorch build exposes it:
 
 ```bash
 python -m pip install --upgrade pip
 python -m pip install -r analytics/requirements.txt
+python setup_check.py
 ```
 
-Place the compatible nine-class poultry model at `custom_poultry.pt`, or set `MODEL_PATH` to its location. The trained model must use the classes in `train.py` in the same order: Chicken, Drinker, Feeder, Leg_Band_Green, Leg_Band_Pink, Leg_Band_Violet, Leg_Band_White, Leg_Band_Yellow, Rooster.
+For NVIDIA or AMD GPU acceleration, install a PyTorch build compatible with that machine's GPU runtime before running `setup_check.py`. Set `INFERENCE_DEVICE=cpu` to force CPU, `INFERENCE_DEVICE=0` (or another available index) to choose a CUDA/ROCm device, or `INFERENCE_DEVICE=mps` to request Apple MPS. `auto` prefers CUDA/ROCm, then MPS, then CPU. Intel accelerators and unsupported PyTorch backends are not automatically selected.
+
+## Install or update model weights
+
+Keep each compatible model under `models/` with a versioned filename. To activate the newest file in that folder:
+
+```bash
+python model_manager.py list
+python model_manager.py activate --latest
+```
+
+Or activate one specific file:
+
+```bash
+python model_manager.py activate models/chickensee-v2.pt
+```
+
+The manager writes an atomic `models/active.json` pointer and records the version and SHA-256 checksum. It does not copy or delete model files, so older versions remain available for rollback:
+
+```bash
+python model_manager.py activate models/chickensee-v1.pt
+```
+
+`MODEL_PATH` is an explicit override and takes priority over the registry. Clear that environment variable if you want the manager-selected model to take effect. Restart any running worker/service after activation. Weights must use the exact nine classes in the order produced by `train.py`: Chicken, Drinker, Feeder, Leg_Band_Green, Leg_Band_Pink, Leg_Band_Violet, Leg_Band_White, Leg_Band_Yellow, Rooster. Both inference paths reject incompatible class metadata before processing frames.
+
+Training saves a timestamped file under `models/` and automatically activates it. This preserves the previous model instead of overwriting `custom_poultry.pt`. Existing `custom_poultry.pt` installations remain a fallback until an active registry is created.
 
 The analytics worker reads these environment variables:
 
 | Variable | Default | Purpose |
 |---|---:|---|
-| `MODEL_PATH` | `<project>/custom_poultry.pt` | Custom poultry weights fallback |
-| `MODEL_NAME` | `yolo26n.pt` | Fallback model name if custom weights are absent |
-| `INFERENCE_DEVICE` | `cpu` | Use `cpu` or a CUDA device such as `0` |
+| `MODEL_PATH` | Active model registry, then `<project>/custom_poultry.pt` | Explicit weights override |
+| `INFERENCE_DEVICE` | `auto` | `auto`, `cpu`, `mps`, or CUDA/ROCm device index |
 | `TRACKER_CONFIG` | `bytetrack_poultry.yaml` | ByteTrack settings |
 | `CONF_THRESHOLD` | `0.15` | Detection floor; keep at or below `track_low_thresh` to preserve low-score recovery |
 | `IOU_THRESHOLD` | `0.45` | Detector NMS overlap threshold |
@@ -49,13 +74,13 @@ The separate `edge.pipeline` uses these environment variables from `edge/config.
 | Variable | Default | Purpose |
 |---|---:|---|
 | `VIDEO_SOURCE` | A project-local MP4 path that may not exist | Default source; pass `--source` to select a file, camera index, or stream explicitly |
-| `MODEL_PATH` | `<project>/custom_poultry.pt` | Required custom weights |
+| `MODEL_PATH` | Active model registry, then `<project>/custom_poultry.pt` | Explicit weights override |
 | `TRACKER_CONFIG` | `bytetrack_poultry.yaml` | Tracker thresholds and buffer |
 | `INFERENCE_SIZE` | `640` | YOLO input size |
 | `CONF_THRESHOLD` | `0.15` | Detection floor |
 | `IOU_THRESHOLD` | `0.45` | Detector NMS threshold |
 | `TARGET_WIDTH` | `640` | Downscale wider frames before inference; output boxes are scaled back |
-| `CPU_THREADS` | Available CPU count | PyTorch CPU threads |
+| `CPU_THREADS` | Available CPU count | PyTorch CPU threads when using CPU inference |
 | `FPS_TARGET` | `15` | Annotated video output frame rate |
 | `RECORD_ANNOTATED` | `1` | Write annotated edge output unless `--no-record` |
 | `SENSOR_SOURCE` | `simulation` | Implemented choices are `simulation` and `serial`; MQTT/HTTP adapters are not implemented |
@@ -139,6 +164,7 @@ python -m analytics.detect_sample_cli --input "D:/FarmVideos/day1.mp4" --output 
 ```bash
 python -m edge.pipeline --source 0 --force-start --no-record
 python -m edge.pipeline --source "D:/FarmVideos/day1.mp4" --force-start --no-record
+python -m edge.pipeline --source 0 --device cpu --model models/chickensee-v2.pt --force-start --no-record
 ```
 
 `--source` accepts a local camera index, video path, or RTSP/HTTP stream. A finite video now stops at end-of-file instead of reopening and replaying forever. The edge pipeline's default schedule is 06:00–18:00 local time; `--force-start` bypasses it for testing. `--view` opens an OpenCV window and requires a desktop session.
@@ -147,10 +173,11 @@ python -m edge.pipeline --source "D:/FarmVideos/day1.mp4" --force-start --no-rec
 
 ```bash
 python -m unittest analytics.tests.test_training
+python -m unittest analytics.tests.test_portable_setup
 python -m unittest analytics.tests.test_legband
 python -m unittest analytics.tests.test_analytics
 python -m unittest startup.test_configuration
-python -m py_compile train.py analytics/collect_dataset.py analytics/tracker.py edge/detector.py edge/pipeline.py
+python -m py_compile train.py analytics/collect_dataset.py analytics/tracker.py edge/detector.py edge/pipeline.py model_registry.py device_utils.py
 ```
 
 `python edge/test_pipeline.py` is an integration check that additionally requires `custom_poultry.pt`, its configured sample video, and local write access for SQLite/reports. A successful unit suite does not establish tracking accuracy; accuracy requires annotated ground truth and metrics such as IDF1/HOTA, identity switches, detector precision/recall, and per-class AP.

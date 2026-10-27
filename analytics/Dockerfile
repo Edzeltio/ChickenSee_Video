@@ -1,4 +1,4 @@
-# Dockerfile for ZAMPEN Layer Chicken Analytics Pipeline on Dell OptiPlex
+# Dockerfile for the local ChickenSee analytics service
 FROM python:3.10-slim
 
 # Avoid interactive prompts
@@ -19,11 +19,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install
-COPY requirements.txt .
+COPY analytics/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy analytics source code
-COPY . /app/analytics
+# Copy analytics code and the shared hardware/model helpers from the repository root.
+COPY analytics /app/analytics
+COPY model_registry.py device_utils.py /app/
 
 # Set Python path
 ENV PYTHONPATH=/app

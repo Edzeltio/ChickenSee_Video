@@ -1,9 +1,4 @@
-"""
-analytics/worker.py
-Core Worker Daemon for ZAMPEN Layer Chicken Video & Sensor Analytics.
-Manages watched-folder polling, OpenCV video decoding, YOLO26 Nano + ByteTrack inference,
-interval sensor aggregation, and behavior metric persistence.
-"""
+"""Local worker for video discovery, poultry tracking, and sensor aggregation."""
 
 import os
 import json
@@ -40,7 +35,7 @@ class AnalysisCancelled(Exception):
 
 class ZampenAnalyticsWorker:
     """
-    Automated background worker running on the Dell OptiPlex server.
+    Automated background worker for the configured local computer.
     Monitors the agent's configured video directories, pairs sensor data,
     produces configurable time-chunked behavior and environmental intelligence,
     and saves annotated detection videos and reports locally.
@@ -93,7 +88,7 @@ class ZampenAnalyticsWorker:
         self._fs_event.set()
 
     def start_daemon(self):
-        """Main polling loop running continuously as an OptiPlex background service."""
+        """Poll watched folders and process eligible video files."""
         self._publish_queue_status_snapshot()
         self._queue_snapshot_thread = threading.Thread(
             target=self._publish_queue_status_periodically,
@@ -101,8 +96,8 @@ class ZampenAnalyticsWorker:
         )
         self._queue_snapshot_thread.start()
         print("═══════════════════════════════════════════════════════════════")
-        print("  ZAMPEN Layer Chicken Analytics Pipeline - OptiPlex Daemon")
-        print("  Model: YOLO26 Nano (yolo26n.pt) + ByteTrack")
+        print("  Chicken analytics worker")
+        print(f"  Model: {CONFIG.custom_weights_path} + ByteTrack")
         print(f"  Input Video Dirs: {', '.join(str(p) for p in self._video_input_dirs())}")
         print(f"  Local Results   : {VIDEOS_DIR.parent}")
         print(f"  Detected Videos : {VIDEOS_DIR}")
