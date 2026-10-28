@@ -36,7 +36,7 @@ class AnalyticsConfig(BaseModel):
             if (PROJECT_ROOT / "bytetrack_poultry.yaml").exists()
             else "bytetrack.yaml",
         ),
-        description="ByteTrack YAML tracker configuration"
+        description="Ultralytics tracker YAML; ByteTrack is the lightweight default"
     )
     device: str = Field(
         default_factory=lambda: os.getenv("INFERENCE_DEVICE", "auto"),

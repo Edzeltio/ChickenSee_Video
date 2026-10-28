@@ -1,7 +1,7 @@
 """
 analytics/tracker.py
-Ultralytics poultry detection and ByteTrack multi-object tracking engine.
-Executes model.track(..., tracker="bytetrack.yaml", persist=True) for temporal bird tracking.
+Ultralytics poultry detection with configurable tracker profiles.
+Executes model.track(..., tracker=<configured YAML>, persist=True) for temporal bird tracking.
 """
 
 import math
@@ -45,7 +45,7 @@ class TrackedDetection:
     confidence: float
     class_id: int
     class_name: str
-    track_id: Optional[int]            # ByteTrack persistent ID
+    track_id: Optional[int]            # Per-video tracker ID
     bird_label: str                    # Hen1-5, Rooster, or Chicken
 
 
@@ -60,7 +60,7 @@ class TrackerFrameOutput:
 
 class ZampenYOLOTracker:
     """
-    YOLO poultry detector and ByteTrack tracker for supported PyTorch devices.
+    YOLO poultry detector with a configurable Ultralytics tracker profile.
     """
 
     # Requires 10 more observations than current class before switching —
@@ -97,7 +97,7 @@ class ZampenYOLOTracker:
         self.imgsz = CONFIG.imgsz
 
         print(f"[TRACKER] Initializing YOLO weights from: {self.weights_path}")
-        print(f"[TRACKER] Using ByteTrack config: {self.tracker_yaml}")
+        print(f"[TRACKER] Using tracker config: {self.tracker_yaml}")
         self.model = YOLO(self.weights_path)
         validate_poultry_classes(self.model.names)
 
@@ -281,7 +281,7 @@ class ZampenYOLOTracker:
             self.short_track_classes[bird.track_id] = bird.class_name
 
         # Stable, uniquely colored leg bands are the only current cross-video
-        # identity signal. ByteTrack and proximity IDs remain local to a video.
+        # identity signal. Tracker and proximity IDs remain local to a video.
         for bird in birds:
             stable_id = self.STABLE_BAND_IDS.get(bird.bird_label)
             if stable_id is not None:
@@ -415,13 +415,13 @@ class ZampenYOLOTracker:
 
     def process_frame(self, frame: np.ndarray, frame_idx: int, fps: float = 30.0) -> TrackerFrameOutput:
         """
-        Executes YOLO26 Nano inference with ByteTrack persistence.
+        Executes YOLO inference with the configured Ultralytics tracker.
         """
         self.processed_frame_count += 1
         self._prune_track_class_history()
         timestamp_s = frame_idx / fps if fps > 0 else 0.0
 
-        # Run ByteTrack prediction workflow
+        # Run the configured Ultralytics tracking workflow
         results = self.model.track(
             frame,
             persist=True,

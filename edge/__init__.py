@@ -1,6 +1,7 @@
 """
 ChickenSee Edge AI Monitoring System.
-Modular components for real-time YOLO26n poultry detection, ByteTrack Re-ID,
+Modular components for real-time YOLO poultry detection, ByteTrack association,
+optional BoT-SORT appearance Re-ID,
 behavior classification, sensor synchronization, and hourly telemetry aggregation.
 """
 

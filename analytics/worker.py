@@ -97,7 +97,7 @@ class ZampenAnalyticsWorker:
         self._queue_snapshot_thread.start()
         print("═══════════════════════════════════════════════════════════════")
         print("  Chicken analytics worker")
-        print(f"  Model: {CONFIG.custom_weights_path} + ByteTrack")
+        print(f"  Model: {CONFIG.custom_weights_path} + configured tracker")
         print(f"  Input Video Dirs: {', '.join(str(p) for p in self._video_input_dirs())}")
         print(f"  Local Results   : {VIDEOS_DIR.parent}")
         print(f"  Detected Videos : {VIDEOS_DIR}")

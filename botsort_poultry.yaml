@@ -1,0 +1,20 @@
+# Optional appearance-ReID tracker profile for fixed-camera poultry footage.
+# Select with TRACKER_CONFIG=botsort_poultry.yaml in analytics and edge runs.
+tracker_type: botsort
+track_high_thresh: 0.40
+track_low_thresh: 0.15
+new_track_thresh: 0.40
+track_buffer: 90
+match_thresh: 0.80
+fuse_score: true
+
+# Fixed cameras do not need global-motion compensation. For a moving camera,
+# try sparseOptFlow and validate it on representative footage.
+gmc_method: none
+
+# Enable Ultralytics appearance matching using the detector's own features.
+# This avoids requiring a separate ReID checkpoint, but may cost inference speed.
+proximity_thresh: 0.50
+appearance_thresh: 0.80
+with_reid: true
+model: auto

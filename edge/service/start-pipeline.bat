@@ -6,7 +6,7 @@ echo ==============================================================
 echo    ChickenSee Local Edge AI Tracking Service
 echo ==============================================================
 echo [START] Active Hours: 06:00:00 to 18:00:00 daily
-echo [START] Model: active compatible poultry .pt + ByteTrack
+echo [START] Model: active compatible poultry .pt + configured tracker
 echo [START] Device: auto (CUDA/MPS when available, otherwise CPU)
 echo [START] Database: agent\data\chicken_telemetry.db
 echo ==============================================================

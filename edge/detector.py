@@ -1,4 +1,4 @@
-"""Portable YOLO poultry detection and ByteTrack inference engine."""
+"""Portable YOLO poultry detection with configurable Ultralytics tracking."""
 
 import os
 import cv2
@@ -39,7 +39,7 @@ COLOR_MAP = {
 @dataclass
 class Detection:
     box: List[int]                # [x1, y1, x2, y2]
-    track_id: Optional[int]       # ByteTrack persistent ID
+    track_id: Optional[int]       # Per-video tracker ID
     label: str                    # e.g., "Rooster", "Hen1 (Green)", "Feeder"
     confidence: float             # Model detection confidence
     type: str                     # "rooster" | "hen" | "infrastructure"
@@ -66,7 +66,7 @@ class FrameInferenceResult:
 
 class PoultryInferenceEngine:
     """
-    Edge YOLO inference and ByteTrack manager with portable device selection.
+    Edge YOLO inference and tracker manager with portable device selection.
     """
 
     def __init__(self, vision_config: Optional[VisionConfig] = None):
@@ -195,7 +195,7 @@ class PoultryInferenceEngine:
             scale_h = orig_h / target_h
 
         # ------------------------------------------------------------------
-        # 1. ByteTrack YOLO Inference
+        # 1. Configured YOLO tracker inference
         # ------------------------------------------------------------------
         try:
             with torch.inference_mode():

@@ -6,14 +6,28 @@ This guide describes the implemented Python pipeline, how to collect and train d
 
 The project has two Python tracking paths:
 
-- `analytics/worker.py` analyzes stable MP4 files in configured folders. `analytics/tracker.py` uses YOLO detections and ByteTrack; the worker resets tracker state at each video boundary.
-- `edge/pipeline.py` processes a continuous local camera/RTSP stream or one selected video. `edge/detector.py` uses the edge configuration and ByteTrack.
+- `analytics/worker.py` analyzes stable MP4 files in configured folders. `analytics/tracker.py` uses YOLO detections and the selected Ultralytics tracker; the worker resets tracker state at each video boundary.
+- `edge/pipeline.py` processes a continuous local camera/RTSP stream or one selected video. `edge/detector.py` uses the selected tracker configuration.
 - `train.py` trains the nine-class detector. It now validates labels, keeps source-video groups together by default, and does not start training on import.
 - `analytics/collect_dataset.py` collects full frames, YOLO-format label proposals, object crops, and JSONL manifests. It supports reviewed manual labels without weights and model-assisted proposals when compatible custom weights are available.
 
-ByteTrack is appropriate for short-term association in this controlled, fixed-camera setting: it is light enough for a CPU edge machine and uses motion/box overlap without another large model. It does not provide identity across separate video files. Pure proximity-based relinking also risks merging two similar birds, so the analytics tracker only relinks mutually closest short-gap candidates when the distance is unambiguous.
+ByteTrack remains the default because it is light enough for CPU edge machines. It uses motion and box overlap, not appearance. The optional `botsort_poultry.yaml` profile enables Ultralytics BoT-SORT appearance Re-ID using `model: auto`, so no separate ReID checkpoint is configured. That profile may use more compute and has not been benchmarked on this project's footage. Analytics also has a conservative, short-gap proximity relink; it is not appearance Re-ID.
 
-For cross-video individuals, a detected uniquely assigned colored leg band is the current stable identity signal. The five existing colors map deterministically to IDs `1000001`–`1000005`. This assumes one hen per band color. If multiple hens share a color, or a band is hidden or missed, the system cannot guarantee individual identity. Unbanded chickens, roosters, and all ByteTrack IDs without a confirmed band remain local to the video. A learned appearance Re-ID model is not currently present; adding one requires labeled identities across multiple days and cameras, followed by a measured validation set.
+To try appearance Re-ID, set `TRACKER_CONFIG` to the profile in both analytics and edge before starting them:
+
+```bash
+export TRACKER_CONFIG="$PWD/botsort_poultry.yaml"
+```
+
+PowerShell:
+
+```powershell
+$env:TRACKER_CONFIG = (Join-Path (Get-Location) "botsort_poultry.yaml")
+```
+
+Restart the worker or camera process after changing the setting. For systemd, set `TRACKER_CONFIG=/opt/chickensee/botsort_poultry.yaml` in `/etc/chickensee/edge.env`. Compare results against the default ByteTrack profile on the same labeled clip; Re-ID can still confuse similar-looking hens, and changing the tracker does not create cross-video identity.
+
+For cross-video individuals, a detected uniquely assigned colored leg band is the current stable identity signal. The five existing colors map deterministically to IDs `1000001`–`1000005`. This assumes one hen per band color. If multiple hens share a color, or a band is hidden or missed, the system cannot guarantee individual identity. Unbanded chickens, roosters, and all tracker IDs without a confirmed band remain local to the video. The optional BoT-SORT profile improves appearance matching within a video; it is not a trained poultry identity model and does not establish cross-video identity.
 
 ## Install and configure
 
@@ -59,7 +73,7 @@ The analytics worker reads these environment variables:
 |---|---:|---|
 | `MODEL_PATH` | Active model registry, then `<project>/custom_poultry.pt` | Explicit weights override |
 | `INFERENCE_DEVICE` | `auto` | `auto`, `cpu`, `mps`, or CUDA/ROCm device index such as `0` |
-| `TRACKER_CONFIG` | `bytetrack_poultry.yaml` | ByteTrack settings |
+| `TRACKER_CONFIG` | `bytetrack_poultry.yaml` | Tracker YAML; use `botsort_poultry.yaml` to enable appearance Re-ID |
 | `CONF_THRESHOLD` | `0.15` | Detection floor; keep at or below `track_low_thresh` to preserve low-score recovery |
 | `IOU_THRESHOLD` | `0.45` | Detector NMS overlap threshold |
 | `INFERENCE_SIZE` | `640` | Inference image size; larger helps small bands but costs more compute |
@@ -77,7 +91,7 @@ The separate `edge.pipeline` uses these environment variables from `edge/config.
 | `VIDEO_SOURCE` | A project-local MP4 path that may not exist | Default source; pass `--source` to select a file, camera index, or stream explicitly |
 | `MODEL_PATH` | Active model registry, then `<project>/custom_poultry.pt` | Explicit weights override |
 | `INFERENCE_DEVICE` | `auto` | `auto`, `cpu`, `mps`, or CUDA/ROCm device index |
-| `TRACKER_CONFIG` | `bytetrack_poultry.yaml` | Tracker thresholds and buffer |
+| `TRACKER_CONFIG` | `bytetrack_poultry.yaml` | Tracker YAML; use `botsort_poultry.yaml` to enable appearance Re-ID |
 | `INFERENCE_SIZE` | `640` | YOLO input size |
 | `CONF_THRESHOLD` | `0.15` | Detection floor |
 | `IOU_THRESHOLD` | `0.45` | Detector NMS threshold |

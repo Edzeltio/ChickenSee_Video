@@ -1,7 +1,7 @@
 """
 edge/test_pipeline.py - Comprehensive Unit & End-to-End Verification Test.
 Validates:
-1. Custom YOLO26n weights loading & ByteTrack association
+1. Custom YOLO weights loading & configured tracker association
 2. Poultry Re-ID (Hens & Roosters separation)
 3. Infrastructure interactions (Feeder / Drinker behavior recognition)
 4. Sensor-Vision temporal synchronization

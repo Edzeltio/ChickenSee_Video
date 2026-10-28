@@ -2,7 +2,7 @@
 
 Automated edge behavior-analysis and sensor-aggregation pipeline for the **"Vision-Based Identification and Behavior Monitoring of ZAMPEN Native Layer Chickens"** capstone project.
 
-Designed for local deployment on Windows, Linux, or macOS systems supported by PyTorch and OpenCV. The detector loads a compatible nine-class poultry `.pt` file from the shared active-model registry and uses ByteTrack for within-video association. CPU is the portable baseline; supported CUDA/ROCm and Apple MPS devices can be selected automatically.
+Designed for local deployment on Windows, Linux, or macOS systems supported by PyTorch and OpenCV. The detector loads a compatible nine-class poultry `.pt` file from the shared active-model registry and uses ByteTrack by default, with an optional BoT-SORT appearance-ReID profile for within-video association. CPU is the portable baseline; supported CUDA/ROCm and Apple MPS devices can be selected automatically.
 
 ---
 
@@ -24,7 +24,7 @@ Designed for local deployment on Windows, Linux, or macOS systems supported by P
   │  • Computes interval sensor averages (Temp, RH, NH3, Lux, THI)          │
   │  • Marks unmatched sensor intervals unavailable; never substitutes     │
   │    estimated readings for missing telemetry                           │
-   │  • Runs YOLO26 Nano + ByteTrack within each source video               │
+   │  • Runs YOLO + configured tracker within each source video             │
   │  • Stabilizes class labels across each track to limit frame-to-frame  │
   │    Chicken / Feeder / Drinker label flips                              │
   │  • Resolves hen bands from full-resolution HSV crops with temporal     │
@@ -84,7 +84,7 @@ analytics/
 ├── README.md                 # Complete system documentation
 ├── config.py                 # Thresholds, paths, and pipeline parameters
 ├── database.py               # SQLAlchemy ORM models & job state manager
-├── tracker.py                # YOLO26 Nano + ByteTrack inference engine
+├── tracker.py                # YOLO + configurable tracker inference engine
 ├── behavior_engine.py        # Spatial behavior quantification engine
 ├── worker.py                 # Watched-folder polling & variable video chunks
 ├── api.py                    # FastAPI REST endpoints
