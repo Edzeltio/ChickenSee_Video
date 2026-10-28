@@ -11,6 +11,7 @@ from pathlib import Path
 from model_registry import (
     activate_model,
     discover_models,
+    install_model,
     registry_path,
     resolve_model_path,
     sha256_file,
@@ -26,6 +27,11 @@ def main(argv=None) -> int:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("list", help="List managed weights and the active model")
+    install_parser = subparsers.add_parser(
+        "install", help="Copy a .pt file into models/ as a new version and activate it"
+    )
+    install_parser.add_argument("path", help="Source .pt file")
+    install_parser.add_argument("--name", help="Optional version filename or label")
     activate_parser = subparsers.add_parser("activate", help="Activate a .pt file")
     activate_parser.add_argument("path", nargs="?", help="Path to a .pt file")
     activate_parser.add_argument(
@@ -67,6 +73,16 @@ def main(argv=None) -> int:
             for candidate in candidates:
                 marker = " (active)" if candidate.resolve() == active_path.resolve() else ""
                 print(f"  {candidate.relative_to(PROJECT_ROOT) if candidate.is_relative_to(PROJECT_ROOT) else candidate}{marker}")
+            return 0
+
+        if args.command == "install":
+            data = install_model(args.path, PROJECT_ROOT, args.name)
+            print(f"Installed and activated {data['version']}: {data['installed_path']}")
+            print(f"SHA-256: {data['sha256']}")
+            print(f"Manifest: {registry_path(PROJECT_ROOT)}")
+            print("Restart the running service to load the new weights.")
+            if os.getenv("MODEL_PATH"):
+                print("Warning: MODEL_PATH overrides the registry. Clear it to use this selection.")
             return 0
 
         if args.latest == bool(args.path):

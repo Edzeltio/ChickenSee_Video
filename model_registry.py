@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
+import shutil
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -117,6 +119,59 @@ def activate_model(model_path: Path, project_root: Path) -> Dict[str, Any]:
     finally:
         if temp_path is not None and temp_path.exists():
             temp_path.unlink()
+    return data
+
+
+def install_model(
+    source_path: Path, project_root: Path, name: Optional[str] = None
+) -> Dict[str, Any]:
+    """Copy a model into the managed versions folder and activate it atomically."""
+    root = Path(project_root).resolve()
+    source = Path(source_path).expanduser()
+    if not source.is_absolute():
+        source = root / source
+    source = source.resolve()
+    if source.suffix.lower() != ".pt":
+        raise ValueError(f"Model file must have a .pt extension: {source}")
+    if not source.is_file():
+        raise FileNotFoundError(f"Model file does not exist: {source}")
+    if source.stat().st_size == 0:
+        raise ValueError(f"Model file is empty: {source}")
+
+    requested_name = name or source.stem
+    if Path(requested_name).name != requested_name:
+        raise ValueError("Model version name must be a filename, not a path.")
+    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "-", requested_name).strip(".-_")
+    if not safe_name:
+        raise ValueError("Model version name must contain letters or numbers.")
+    if not safe_name.lower().endswith(".pt"):
+        safe_name += ".pt"
+
+    model_dir = root / "models"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    target = model_dir / safe_name
+    if target.exists():
+        if target.is_file() and sha256_file(target) == sha256_file(source):
+            data = activate_model(target, root)
+            data["installed_path"] = str(target)
+            return data
+        raise FileExistsError(
+            f"Model version already exists: {target}. Use a new --name; existing versions are never overwritten."
+        )
+
+    temp_path: Optional[Path] = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=model_dir, delete=False, suffix=".pt") as temp_file:
+            temp_path = Path(temp_file.name)
+        shutil.copy2(source, temp_path)
+        os.replace(temp_path, target)
+        target.touch()
+    finally:
+        if temp_path is not None and temp_path.exists():
+            temp_path.unlink()
+
+    data = activate_model(target, root)
+    data["installed_path"] = str(target)
     return data
 
 

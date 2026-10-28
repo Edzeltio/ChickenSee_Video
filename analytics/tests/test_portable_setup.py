@@ -9,6 +9,7 @@ from model_registry import (
     POULTRY_CLASS_NAMES,
     activate_model,
     discover_models,
+    install_model,
     resolve_model_path,
     validate_poultry_classes,
 )
@@ -100,6 +101,24 @@ class ModelRegistryTests(unittest.TestCase):
             os.utime(old, ns=(1_000_000_000, 1_000_000_000))
             os.utime(new, ns=(2_000_000_000, 2_000_000_000))
             self.assertEqual(discover_models(root)[0], new)
+
+    def test_install_copies_without_overwriting_an_existing_version(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "incoming.pt"
+            source.write_bytes(b"new-weights")
+
+            result = install_model(source, root, "poultry-v2")
+            installed = root / "models" / "poultry-v2.pt"
+            self.assertEqual(Path(result["installed_path"]), installed)
+            self.assertEqual(installed.read_bytes(), b"new-weights")
+            self.assertEqual(Path(resolve_model_path(root)), installed.resolve())
+
+            other = root / "other.pt"
+            other.write_bytes(b"different-weights")
+            with self.assertRaisesRegex(FileExistsError, "never overwritten"):
+                install_model(other, root, "poultry-v2")
+            self.assertEqual(installed.read_bytes(), b"new-weights")
 
 
 if __name__ == "__main__":

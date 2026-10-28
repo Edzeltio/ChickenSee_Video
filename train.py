@@ -5,6 +5,7 @@ Importing this module is safe; training only starts from the command line.
 """
 
 import argparse
+import os
 import random
 import re
 import shutil
@@ -291,6 +292,8 @@ def main():
         manifest = activate_model(target_weights, PROJECT_DIR)
         print(f"Best weights saved as version: {target_weights}")
         print(f"Activated weights SHA-256: {manifest['sha256']}")
+        if os.getenv("MODEL_PATH"):
+            print("Warning: MODEL_PATH overrides the registry; clear it to use this trained model.")
     except (FileNotFoundError, OSError, ValueError, RuntimeError) as error:
         parser.error(str(error))
 

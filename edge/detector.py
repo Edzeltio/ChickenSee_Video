@@ -124,12 +124,12 @@ class PoultryInferenceEngine:
         try:
             dummy = np.zeros((self.cfg.inference_size, self.cfg.inference_size, 3), dtype=np.uint8)
             with torch.inference_mode():
-            self.model(
-                dummy,
-                verbose=False,
-                imgsz=self.cfg.inference_size,
-                device=self.device,
-            )
+                self.model(
+                    dummy,
+                    verbose=False,
+                    imgsz=self.cfg.inference_size,
+                    device=self.device,
+                )
             print("[ENGINE] Inference engine warmed up successfully.")
         except Exception as e:
             print(f"[ENGINE] Warm-up notice: {e}")

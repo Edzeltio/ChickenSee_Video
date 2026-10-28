@@ -29,20 +29,21 @@ For NVIDIA or AMD GPU acceleration, install a PyTorch build compatible with that
 
 ## Install or update model weights
 
-Keep each compatible model under `models/` with a versioned filename. To activate the newest file in that folder:
+Install a new model from any location with one command. This copies it into `models/` under a versioned filename, records its checksum, activates it, and keeps previous versions:
 
 ```bash
 python model_manager.py list
-python model_manager.py activate --latest
+python model_manager.py install "D:/Downloads/chickensee-v2.pt"
 ```
 
-Or activate one specific file:
+If you copied a file into `models/` yourself, activate the newest one or select a specific version:
 
 ```bash
-python model_manager.py activate models/chickensee-v2.pt
+python model_manager.py activate --latest
+python model_manager.py activate models/chickensee-v1.pt
 ```
 
-The manager writes an atomic `models/active.json` pointer and records the version and SHA-256 checksum. It does not copy or delete model files, so older versions remain available for rollback:
+The manager writes an atomic `models/active.json` pointer and records the version and SHA-256 checksum. It never overwrites or deletes an existing version. `python model_manager.py list` compares the active file to the recorded checksum.
 
 ```bash
 python model_manager.py activate models/chickensee-v1.pt
@@ -57,7 +58,7 @@ The analytics worker reads these environment variables:
 | Variable | Default | Purpose |
 |---|---:|---|
 | `MODEL_PATH` | Active model registry, then `<project>/custom_poultry.pt` | Explicit weights override |
-| `INFERENCE_DEVICE` | `auto` | `auto`, `cpu`, `mps`, or CUDA/ROCm device index |
+| `INFERENCE_DEVICE` | `auto` | `auto`, `cpu`, `mps`, or CUDA/ROCm device index such as `0` |
 | `TRACKER_CONFIG` | `bytetrack_poultry.yaml` | ByteTrack settings |
 | `CONF_THRESHOLD` | `0.15` | Detection floor; keep at or below `track_low_thresh` to preserve low-score recovery |
 | `IOU_THRESHOLD` | `0.45` | Detector NMS overlap threshold |
@@ -75,6 +76,7 @@ The separate `edge.pipeline` uses these environment variables from `edge/config.
 |---|---:|---|
 | `VIDEO_SOURCE` | A project-local MP4 path that may not exist | Default source; pass `--source` to select a file, camera index, or stream explicitly |
 | `MODEL_PATH` | Active model registry, then `<project>/custom_poultry.pt` | Explicit weights override |
+| `INFERENCE_DEVICE` | `auto` | `auto`, `cpu`, `mps`, or CUDA/ROCm device index |
 | `TRACKER_CONFIG` | `bytetrack_poultry.yaml` | Tracker thresholds and buffer |
 | `INFERENCE_SIZE` | `640` | YOLO input size |
 | `CONF_THRESHOLD` | `0.15` | Detection floor |
@@ -180,7 +182,7 @@ python -m unittest startup.test_configuration
 python -m py_compile train.py analytics/collect_dataset.py analytics/tracker.py edge/detector.py edge/pipeline.py model_registry.py device_utils.py
 ```
 
-`python edge/test_pipeline.py` is an integration check that additionally requires `custom_poultry.pt`, its configured sample video, and local write access for SQLite/reports. A successful unit suite does not establish tracking accuracy; accuracy requires annotated ground truth and metrics such as IDF1/HOTA, identity switches, detector precision/recall, and per-class AP.
+`python edge/test_pipeline.py` is an integration check that additionally requires active compatible weights, its configured sample video, and local write access for SQLite/reports. A successful unit suite does not establish tracking accuracy; accuracy requires annotated ground truth and metrics such as IDF1/HOTA, identity switches, detector precision/recall, and per-class AP.
 
 ## Sample-video result and current limits
 
@@ -195,6 +197,7 @@ Known limitations:
 - A hidden, dirty, or visually ambiguous colored band can prevent stable identity recognition. The current five color classes require distinct colors per individually tracked hen.
 - Sparse/imbalanced training images or unreviewed auto-labels can reinforce model mistakes. Validation should split by source video and cover all classes and recording conditions.
 - The local camera, CUDA acceleration, Arduino/serial sensors, and Windows desktop UI require access to the actual farm machine and hardware; none can be verified in the hosted environment. The serial payload and source behavior are unit-tested, but no physical Arduino was available.
+- The Linux systemd example uses `/opt/chickensee` and a `chickensee` service account; edit those values for the installation path and non-root account created on the target machine. Resource limits are not hard-coded.
 
 ## Recommended first production values
 

@@ -60,8 +60,7 @@ class TrackerFrameOutput:
 
 class ZampenYOLOTracker:
     """
-    YOLO26 Nano + ByteTrack edge inference wrapper.
-    Optimized for Dell OptiPlex multi-core CPU / Intel OpenVINO / CUDA execution.
+    YOLO poultry detector and ByteTrack tracker for supported PyTorch devices.
     """
 
     # Requires 10 more observations than current class before switching —

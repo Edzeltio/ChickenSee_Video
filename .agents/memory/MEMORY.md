@@ -1,2 +1,3 @@
 - [Chicken identity scope](chicken-identity-scope.md) — cross-video IDs require a confirmed unique band; ByteTrack and proximity IDs are video-local.
 - [Sensor data integrity](sensor-data-integrity.md) — hardware failures and missing samples must stay visibly unavailable, never be replaced with simulated measurements.
+- [Portable model deployment](portable-model-deployment.md) — edge and analytics share a versioned active-model pointer; explicit `MODEL_PATH` overrides it.
